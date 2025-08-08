@@ -1,0 +1,29 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[[source]]
+url = "https://download.pytorch.org/whl/cu128"
+verify_ssl = true
+name = "downloadpytorch"
+
+[packages]
+torch = {version = "*", index = "downloadpytorch"}
+torchvision = {version = "*", index = "downloadpytorch"}
+transformers = "*"
+lightning = "*"
+pandas = "*"
+scikit-learn = "*"
+tensorboard = "*"
+jamotools = "*"
+datasets = "==3.6.0"
+pip = "*"
+setuptools = "*"
+setuptools-rust = "*"
+dotenv = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.12"

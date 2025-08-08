@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.env
+.env
+venv/
+ENV/
+env/
+*.egg-info/
+*.egg
+.cache
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Build
+build/
+dist/
+*.bak
+*.tmp
+
+# Node
+node_modules/
+
+# Others
+*.sqlite3
+*.db
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# Ignore secrets
+secrets.*
