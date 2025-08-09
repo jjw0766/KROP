@@ -244,7 +244,7 @@ class LitKrop(L.LightningModule):
     
     def training_step(self, batch, batch_idx):
         loss, logits, *_ = self(batch, pred=False)
-        self.log('train_loss', loss, batch_size=len(batch['sentence_noisy']))
+        self.log('train_loss', loss, batch_size=len(batch['sentence_noisy']), on_step=True, on_epoch=True)
 
     def validation_step(self, batch, batch_idx):
         loss, logits, *_ = self(batch, pred=False)
