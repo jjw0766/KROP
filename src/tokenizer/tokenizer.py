@@ -5,24 +5,33 @@ from collections import deque, Counter
 from jamotools import split_syllables, join_jamos
 from transformers import AutoTokenizer
 
-class HangulTokenizer:    
+class KropTokenizer:    
     def __init__(self, base_tokenizer_name):
         self.base_tokenizer_name = base_tokenizer_name
         self.base_tokenizer = AutoTokenizer.from_pretrained(self.base_tokenizer_name)
-        self.base_tokenizer.pad_token_id = 128
-        self.base_tokenizer.pad_token = self.base_tokenizer.decode([self.base_tokenizer.pad_token_id])
+        self.base_tokenizer.bos_token_id = self.base_tokenizer.encode('<|im_start|>', add_special_tokens=False)[-1]
+        self.base_tokenizer.bos_token = '<|im_start|>'
+        self.base_tokenizer.eos_token_id = self.base_tokenizer.encode('<|im_end|>', add_special_tokens=False)[-1]
+        self.base_tokenizer.eos_token = '<|im_end|>'
+        self.base_tokenizer.pad_token_id = 140783
+        self.pad_token_id = 140783
+        self.base_tokenizer.pad_token = self.base_tokenizer.decode(self.pad_token_id)
         self.space_token_id = self.base_tokenizer.encode(' ', add_special_tokens=False)[-1]
         char_start, char_end = 0xAC00, 0xD7A3  # 가-힣
         self.kor_chars = list(set([chr(code) for code in range(char_start, char_end + 1)]))
-        self.char_3ids = []
-        self.char_1ids = []
+        self.char_ids = []
+        
         for kor_char in self.kor_chars:
             ids = self.base_tokenizer.encode(kor_char, add_special_tokens=False)
-            if len(ids)==3:
-                self.char_3ids.append(ids)
-            else:
-                ids = ids+2*[self.base_tokenizer.pad_token_id]
-                self.char_1ids.append(ids)
+            if len(ids)==1:
+                ids = ids+2*[self.pad_token_id]
+                self.char_ids.append(ids)
+            elif len(ids)==2:
+                ids = ids+[self.pad_token_id]
+                self.char_ids.append(ids)
+            elif len(ids)==3:
+                ids = ids
+                self.char_ids.append(ids)
         self.chos = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ']
         self.joongs = ['ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅗ', 'ㅘ', 'ㅙ', 'ㅚ', 'ㅛ', 'ㅜ', 'ㅝ', 'ㅞ', 'ㅟ', 'ㅠ', 'ㅡ', 'ㅢ', 'ㅣ']
         self.jongs = [self.base_tokenizer.pad_token, 'ㄱ', 'ㄲ', 'ㄳ', 'ㄴ', 'ㄵ', 'ㄶ', 'ㄷ', 'ㄹ', 'ㄺ', 'ㄻ', 'ㄼ', 'ㄽ', 'ㄾ', 'ㄿ', 'ㅀ', 'ㅁ', 'ㅂ', 'ㅄ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ']
@@ -35,6 +44,7 @@ class HangulTokenizer:
         self.id_to_jamo = {jamo_id: jamo for jamo, jamo_id in self.jamo_to_id.items()}
 
     def encode_jamo(self, sentence):
+        sentence = self.base_tokenizer.bos_token + sentence + self.base_tokenizer.eos_token
         encoded_ids = []
         token_type_ids = []
         past_chars = ''
@@ -59,6 +69,9 @@ class HangulTokenizer:
         return encoded_ids, token_type_ids
 
     def decode_jamo(self, encoded_ids, token_type_ids):
+        encoded_ids = encoded_ids[1:-1]
+        token_type_ids = token_type_ids[1:-1]
+
         encoded_ids = deque(encoded_ids)
         token_type_ids = deque(token_type_ids)
         decoded = []
@@ -82,6 +95,7 @@ class HangulTokenizer:
         return ''.join(decoded)
 
     def encode_char(self, sentence):
+        sentence = self.base_tokenizer.bos_token + sentence + self.base_tokenizer.eos_token
         encoded_ids = []
         token_type_ids = []
         past_chars = ''
@@ -93,7 +107,7 @@ class HangulTokenizer:
                     token_type_ids.extend([0]*len(past_chars_encoded))
                 past_chars=''
                 encoded_id = self.base_tokenizer.encode(char, add_special_tokens=False)
-                encoded_id = encoded_id + (3-len(encoded_id)) * [self.base_tokenizer.pad_token_id]
+                encoded_id = encoded_id + (3-len(encoded_id)) * [self.pad_token_id]
                 encoded_ids.extend(encoded_id)
                 token_type_ids.extend([4,4,4])
             else:
@@ -105,6 +119,9 @@ class HangulTokenizer:
         return encoded_ids, token_type_ids
 
     def decode_char(self, encoded_ids, token_type_ids):
+        encoded_ids = encoded_ids[1:-1]
+        token_type_ids = token_type_ids[1:-1]
+
         encoded_ids = deque(encoded_ids)
         token_type_ids = deque(token_type_ids)
         decoded = []
@@ -201,6 +218,7 @@ class HangulTokenizer:
             input_ids[i] = input_ids[i] + (max_length-len(input_ids[i])) * [self.base_tokenizer.eos_token_id]
             attention_mask.append([1 if input_id!=self.base_tokenizer.eos_token_id else 0 for input_id in input_ids[i]])
             token_type_ids[i] = token_type_ids[i] + (max_length-len(token_type_ids[i])) * [0]
+            token_type_ids[i][0] = 0
 
         return (
             torch.LongTensor(input_ids),

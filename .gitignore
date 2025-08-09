@@ -48,3 +48,8 @@ node_modules/
 
 # Ignore secrets
 secrets.*
+
+# external libraries
+konoise/*
+
+lightning_logs/
