@@ -119,3 +119,13 @@ def get_kor_native_dev_test_dataloader(dataset_name, **kwargs):
     ds = datasets.load_dataset(dataset_name)
     dev_ds, test_ds = ds['dev'], ds['test']
     return DataLoader(dev_ds, **kwargs), DataLoader(test_ds, **kwargs)
+
+def get_cllm_train_dataloader(dataset_name, batch_size, max_length):
+    ds = datasets.load_dataset(dataset_name)
+    train_ds = ds['train']
+    return DataLoader(train_ds, batch_size=batch_size, collate_fn=TrainValCollateFn(max_length=max_length, mode='train'))
+
+def get_cllm_dev_dataloader(dataset_name, batch_size, max_length):
+    ds = datasets.load_dataset(dataset_name)
+    dev_ds = ds['dev']
+    return DataLoader(dev_ds, batch_size=batch_size, collate_fn=TrainValCollateFn(max_length=max_length, mode='valid'))

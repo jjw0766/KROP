@@ -23,6 +23,9 @@ setuptools = "*"
 setuptools-rust = "*"
 dotenv = "*"
 hf-xet = "*"
+peft = "*"
+accelerate = "*"
+bitsandbytes = "*"
 
 [dev-packages]
 
