@@ -7,7 +7,7 @@ from glob import glob
 from torch.utils.data import Dataset, DataLoader
 from konoise import NoiseGenerator
 
-from src.tokenizer.tokenizer import SentenceTokenizer
+from src.tokenizer.modeling_tokenizer import SentenceTokenizer
 
 class MABSATrainDataset(Dataset):
     def __init__(self, filename):

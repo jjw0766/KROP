@@ -10,7 +10,7 @@ from transformers import AutoModelForCausalLM, AutoConfig
 from transformers.modeling_attn_mask_utils import _prepare_4d_attention_mask
 from transformers.modeling_outputs import BaseModelOutputWithPast
 
-from src.tokenizer.tokenizer import BINDKTokenizer
+from src.tokenizer.modeling_tokenizer import BINDKTokenizer
 
 
 class BINDK(nn.Module):
