@@ -35,16 +35,17 @@ class Krop(nn.Module):
     def forward(self, sentence_noisy, sentence=None, task='jamo', pred=False):
         output_ids = None
         if task=='jamo':
-            input_ids, attention_mask, token_type_ids = self.tokenizer.batch_encode_jamo(sentence)
+            input_ids, attention_mask, token_type_ids = self.tokenizer.batch_encode_jamo(sentence_noisy)
             if sentence is not None:
-                output_ids, *_ = self.tokenizer.batch_encode_jamo(sentence_noisy)
+                output_ids, *_ = self.tokenizer.batch_encode_jamo(sentence)
         elif task=='char':
-            input_ids, attention_mask, token_type_ids = self.tokenizer.batch_encode_char(sentence)
+            input_ids, attention_mask, token_type_ids = self.tokenizer.batch_encode_char(sentence_noisy)
             if sentence is not None:
-                output_ids, *_ = self.tokenizer.batch_encode_char(sentence_noisy)
+                output_ids, *_ = self.tokenizer.batch_encode_char(sentence)
 
         input_ids = input_ids.to(self.cho_ids.device)
         attention_mask = attention_mask.to(self.cho_ids.device)
+        token_type_ids = token_type_ids.to(self.cho_ids.device)
 
         logits = self.model(
             input_ids=input_ids,
@@ -62,23 +63,22 @@ class Krop(nn.Module):
         pred_ids = None
         sentence_denoised = []
         if pred:
-            if task=='jamo':
-                pred_ids = self.pred_jamo_ids(logits.detach(), token_type_ids)
-            elif task=='char':
-                pred_ids = self.pred_char_ids(logits.detach(), token_type_ids)
             for idx in range(input_ids.shape[0]):
                 if task=='jamo':
-                    sentence_denoised.append(self.tokenizer.decode_jamo(pred_ids[idx].tolist(), token_type_ids[idx].tolist()))
+                    pred_ids = self.pred_jamo_ids(logits[idx].detach()[:-2], input_ids[idx][1:-1], token_type_ids[idx][1:-1]).detach().cpu().tolist()
+                    sentence_denoised.append(self.tokenizer.decode_jamo(pred_ids, token_type_ids[idx].tolist()[1:-1], False))
                 elif task=='char':
-                    sentence_denoised.append(self.tokenizer.decode_char(pred_ids[idx].tolist(), token_type_ids[idx].tolist()))
+                    pred_ids = self.pred_char_ids(logits[idx].detach()[:-2], input_ids[idx][1:-1], token_type_ids[idx][1:-1]).detach().cpu().tolist()
+                    sentence_denoised.append(self.tokenizer.decode_char(pred_ids, token_type_ids[idx].tolist()[1:-1], False))
         return loss, logits, pred_ids, sentence_denoised
 
     def pred_jamo_ids(
         self,
         logits,
+        input_ids,
         token_type_ids,
     ):
-        pred_ids = token_type_ids.clone()
+        pred_ids = input_ids.clone()
         logits_cho = logits[token_type_ids==1][:, self.cho_ids]
         logits_joong = logits[token_type_ids==2][:, self.joong_ids]
         logits_jong = logits[token_type_ids==3][:, self.jong_ids]
@@ -93,9 +93,10 @@ class Krop(nn.Module):
     def pred_char_ids(
         self,
         logits,
+        input_ids,
         token_type_ids
     ):
-        pred_ids = token_type_ids.clone()
+        pred_ids = input_ids.clone()
         logits_char = logits[token_type_ids==4]
         if not len(logits_char):
             return pred_ids
@@ -138,7 +139,6 @@ def model_forward(
         position_ids = cache_position.unsqueeze(0)
 
     attention_mask = _prepare_4d_attention_mask(attention_mask, self.dtype)
-    attention_mask = attention_mask == 0
     
     # Create the masks
     attention_mask_mapping = {
@@ -197,22 +197,22 @@ class LitKrop(L.LightningModule):
         krop_tokenizer = KropTokenizer(base_tokenizer_name=base_model_name)
         self.krop.set_tokenizer(krop_tokenizer)
 
-    def forward(self, batch, pred):
-        if self.task=='jamo':
+    def forward(self, batch, task, pred):
+        if task=='jamo':
             loss, logits, pred_ids, sentence_denoised = self.krop.forward(
                 sentence_noisy=batch['sentence_noisy'],
                 sentence=batch['sentence'],
                 task='jamo',
                 pred=pred
             )
-        elif self.task=='char':
+        elif task=='char':
             loss, logits, pred_ids, sentence_denoised = self.krop.forward(
                 sentence_noisy=batch['sentence_noisy'],
                 sentence=batch['sentence'],
                 task='char',
                 pred=pred
             )
-        elif self.task=='char-jamo':
+        elif task=='char-jamo':
             loss_char, logits, pred_ids, sentence_denoised = self.krop.forward(
                 sentence_noisy=batch['sentence_noisy'],
                 sentence=batch['sentence'],
@@ -226,7 +226,7 @@ class LitKrop(L.LightningModule):
                 pred=pred
             )
             loss = loss_char+loss_jamo
-        elif self.task=='jamo-char':
+        elif task=='jamo-char':
             loss_jamo, logits, pred_ids, sentence_denoised = self.krop.forward(
                 sentence_noisy=batch['sentence_noisy'],
                 sentence=batch['sentence'],
@@ -243,16 +243,18 @@ class LitKrop(L.LightningModule):
         return loss, logits, pred_ids, sentence_denoised
     
     def training_step(self, batch, batch_idx):
-        loss, logits, *_ = self(batch, pred=False)
+        loss, logits, *_ = self(batch, task=self.task, pred=False)
         self.log('train_loss', loss, batch_size=len(batch['sentence_noisy']), on_step=True, on_epoch=True)
+        return loss
 
     def validation_step(self, batch, batch_idx):
-        loss, logits, *_ = self(batch, pred=False)
+        loss, logits, *_ = self(batch, task=self.task, pred=False)
         self.log('valid_loss', loss, batch_size=len(batch['sentence_noisy']))
+        return loss
     
     def predict_step(self, batch, batch_idx):
-        loss, logits, pred_ids, sentence_denoised = self(batch, pred=False)
+        loss, logits, pred_ids, sentence_denoised = self(batch, task=self.task, pred=True)
         return sentence_denoised
     
     def configure_optimizers(self):
-        return AdamW(self.parameters(), lr=self.lr )
+        return AdamW(self.parameters(), lr=self.lr)

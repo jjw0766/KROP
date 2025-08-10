@@ -68,9 +68,10 @@ class KropTokenizer:
             token_type_ids.extend([0]*len(past_chars_encoded))
         return encoded_ids, token_type_ids
 
-    def decode_jamo(self, encoded_ids, token_type_ids):
-        encoded_ids = encoded_ids[1:-1]
-        token_type_ids = token_type_ids[1:-1]
+    def decode_jamo(self, encoded_ids, token_type_ids, contain_bos_eos_token=True):
+        if contain_bos_eos_token:
+            encoded_ids = encoded_ids[1:-1]
+            token_type_ids = token_type_ids[1:-1]
 
         encoded_ids = deque(encoded_ids)
         token_type_ids = deque(token_type_ids)
@@ -118,9 +119,10 @@ class KropTokenizer:
             token_type_ids.extend([0]*len(past_chars_encoded))
         return encoded_ids, token_type_ids
 
-    def decode_char(self, encoded_ids, token_type_ids):
-        encoded_ids = encoded_ids[1:-1]
-        token_type_ids = token_type_ids[1:-1]
+    def decode_char(self, encoded_ids, token_type_ids, contain_bos_eos_token=True):
+        if contain_bos_eos_token:
+            encoded_ids = encoded_ids[1:-1]
+            token_type_ids = token_type_ids[1:-1]
 
         encoded_ids = deque(encoded_ids)
         token_type_ids = deque(token_type_ids)
