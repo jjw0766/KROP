@@ -6,19 +6,29 @@ from types import MethodType
 from typing import List, Optional, Tuple, Union
 from copy import deepcopy
 from torch.optim import AdamW
-from transformers import AutoModelWithLMHead
+from transformers import AutoModelForCausalLM, AutoConfig
+from transformers.modeling_attn_mask_utils import _prepare_4d_attention_mask
+from transformers.modeling_outputs import BaseModelOutputWithPast
 
-from src.tokenizer.modeling_tokenizer import CharEncoderTokenizer, SentenceTokenizer
+from src.tokenizer.modeling_tokenizer import BINDTokenizer, SentenceTokenizer
 
 
-class CharEncoder(nn.Module):
-    def __init__(self, base_model_name='klue/roberta-small'):
+class BIND(nn.Module):
+    def __init__(self, base_model_name='Qwen/Qwen3-0.6B', use_sliding_window=True, sliding_window=12, use_bntd=True):
         super().__init__()
-        self.model = AutoModelWithLMHead.from_pretrained(base_model_name)
+        self.base_model_config = AutoConfig.from_pretrained(base_model_name)
+        self.base_model_config._attn_implementation = 'eager'
+        self.base_model_config.use_cache=False
+        self.base_model_config.use_sliding_window = use_sliding_window
+        self.base_model_config.sliding_window = sliding_window
+        base_model = AutoModelForCausalLM.from_pretrained(base_model_name, config=self.base_model_config)
+        if use_bntd:
+            base_model.model.forward = MethodType(model_forward, base_model.model)
+        self.model = base_model
 
-    def set_tokenizer(self, tokenizer: CharEncoderTokenizer):
-        self.tokenizer = tokenizer
-
+    def set_tokenizer(self, bind_tokenizer: BINDTokenizer):
+        self.tokenizer = bind_tokenizer
+        
     def forward(self, sentence_noisy, sentence=None, pred=False):
         output_ids = None
         input_ids, attention_mask = self.tokenizer.batch_encode_char(sentence_noisy)
@@ -31,50 +41,118 @@ class CharEncoder(nn.Module):
         logits = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
-            return_dict=True,
         ).logits
 
         loss = None
         if output_ids is not None:
             output_ids = output_ids.to('cuda')
             loss = nn.CrossEntropyLoss(reduction='mean')(
-                logits.reshape(-1, self.model.config.vocab_size),
-                output_ids.reshape(-1),
+                logits[:, :-1, :].reshape(-1, self.model.config.vocab_size),
+                output_ids[:,1:].reshape(-1),
             )
 
         pred_ids = None
         sentence_denoised = []
         if pred:
             for idx in range(input_ids.shape[0]):
-                pred_ids = logits[idx].argmax(-1).detach().cpu().tolist()
-                sentence_denoised.append(self.tokenizer.decode_char(pred_ids, sentence_noisy[idx]))
+                pred_ids = logits[idx][:-2].argmax(-1).detach().cpu().tolist()
+                sentence_denoised.append(self.tokenizer.decode_char(pred_ids, False))
         return loss, logits, pred_ids, sentence_denoised
+ 
     
+def model_forward(
+    self,
+    input_ids: Optional[torch.LongTensor] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    position_ids: Optional[torch.LongTensor] = None,
+    past_key_values  = None,
+    inputs_embeds: Optional[torch.FloatTensor] = None,
+    use_cache: Optional[bool] = None,
+    cache_position: Optional[torch.LongTensor] = None,
+    **kwargs ,
+) -> BaseModelOutputWithPast:
+    if (input_ids is None) ^ (inputs_embeds is not None):
+        raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
+
+    if inputs_embeds is None:
+        inputs_embeds = self.embed_tokens(input_ids)
+
+    if cache_position is None:
+        past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
+        cache_position = torch.arange(
+            past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
+        )
+
+    if position_ids is None:
+        position_ids = cache_position.unsqueeze(0)
+
+    attention_mask = _prepare_4d_attention_mask(attention_mask, self.dtype)
     
-class LitCharEncoder(L.LightningModule):
+    # Create the masks
+    attention_mask_mapping = {
+        "full_attention": attention_mask,
+    }
+    # The sliding window alternating layers are not always activated depending on the config
+    if self.has_sliding_layers:
+        sliding_attention_mask = torch.tril(torch.triu(attention_mask, diagonal=-self.sliding_window), diagonal=self.sliding_window)
+        attention_mask_mapping["sliding_attention"] = sliding_attention_mask
+
+    hidden_states = inputs_embeds
+
+    # create position embeddings to be shared across the decoder layers
+    position_embeddings = self.rotary_emb(hidden_states, position_ids)
+
+    for decoder_layer in self.layers[: self.config.num_hidden_layers]:
+        hidden_states = decoder_layer(
+            hidden_states,
+            attention_mask=attention_mask_mapping[decoder_layer.attention_type],
+            position_ids=position_ids,
+            past_key_value=past_key_values,
+            use_cache=use_cache,
+            cache_position=cache_position,
+            position_embeddings=position_embeddings,
+            **kwargs,
+        )
+
+    hidden_states = self.norm(hidden_states)
+    return BaseModelOutputWithPast(
+        last_hidden_state=hidden_states,
+        past_key_values=past_key_values if use_cache else None,
+    )
+
+
+class LitBIND(L.LightningModule):
     def __init__(
         self,
-        base_model_name='klue/roberta-small',
-        space_token='[SEP]',
-        unk_token='[UNK]',
-        pad_token='[PAD]',
+        base_model_name='Qwen/Qwen3-0.6B',
+        use_sliding_window=True,
+        sliding_window=12,
         lr=5e-5,
         epochs=10,
+        use_bntd=True,
         inference_sentence_min_length=32,
         inference_sentence_max_length=64,
         inference_sentence_n_overlap=3
     ):
         super().__init__()
         self.base_model_name = base_model_name
+        self.use_sliding_window = use_sliding_window
+        self.sliding_window = sliding_window
         self.lr = lr
         self.epochs = epochs
+        self.use_bntd = use_bntd
         self.inference_sentence_min_length = inference_sentence_min_length
         self.inference_sentence_max_length = inference_sentence_max_length
         self.inference_sentence_n_overlap = inference_sentence_n_overlap
 
-        self.encoder = CharEncoder(base_model_name=base_model_name)
-        encoder_tokenizer = CharEncoderTokenizer(base_tokenizer_name=base_model_name, space_token=space_token, unk_token=unk_token, pad_token=pad_token)
-        self.encoder.set_tokenizer(encoder_tokenizer)
+        self.bind = BIND(
+            base_model_name=base_model_name,
+            use_sliding_window=use_sliding_window,
+            sliding_window=sliding_window,
+            use_bntd=use_bntd
+        )
+        bind_tokenizer = BINDTokenizer(base_tokenizer_name=base_model_name)
+        self.bind.set_tokenizer(bind_tokenizer)
         self.sentence_tokenizer = SentenceTokenizer(
             min_length=inference_sentence_min_length,
             max_length=inference_sentence_max_length,
@@ -83,7 +161,7 @@ class LitCharEncoder(L.LightningModule):
         )
 
     def forward(self, batch, pred):
-        loss, logits, pred_ids, sentence_denoised = self.encoder.forward(
+        loss, logits, pred_ids, sentence_denoised = self.bind.forward(
             sentence_noisy=batch['sentence_noisy'],
             sentence=batch['sentence'],
             pred=pred
@@ -112,7 +190,7 @@ class LitCharEncoder(L.LightningModule):
                         'sentence_noisy': [sentence_noisy_chunk],
                         'sentence': None
                     }
-                    loss, logits, pred_ids, sentence_denoised_chunk = self(mini_batch, pred=True)
+                    loss, logits, pred_ids, sentence_denoised_chunk = self(mini_batch, task=self.task, pred=True)
                     sentence_denoised_chunks.append(sentence_denoised_chunk[0])
                 sentence_denoised = ''.join(sentence_denoised_chunks)
                 sentences_denoised.append(sentence_denoised)
@@ -128,7 +206,7 @@ class LitCharEncoder(L.LightningModule):
                         'sentence_noisy': [sentence_noisy_chunk],
                         'sentence': None
                     }
-                    loss, logits, pred_ids, sentence_denoised_chunk = self(mini_batch, pred=True)
+                    loss, logits, pred_ids, sentence_denoised_chunk = self(mini_batch, task=self.task, pred=True)
                     sentence_denoised_chunks_overlapped.append((start_idx, end_idx, sentence_denoised_chunk[0]))
                 sentence_denoised = self.sentence_tokenizer.decode_overlap(sentence_denoised_chunks_overlapped)
                 sentences_denoised.append(sentence_denoised)
