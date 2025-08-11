@@ -74,32 +74,33 @@ class LitInstructionModel(L.LightningModule):
         inputs = self.tokenizer.batch_encode_plus(prompts, return_tensors='pt', padding=True, padding_side='left')
         return inputs
 
-    def forward(self, batch, mode):
-        if mode=='train':
-            inputs = self.batch_tokenize(batch, mode=mode)
-            outputs = self.model(
-                input_ids=inputs['input_ids'].to('cuda'),
-                attention_mask=inputs['attention_mask'].to('cuda'),
-                labels=inputs['input_ids'].to('cuda')
-            )
-        elif mode=='inference':
-            inputs = self.batch_tokenize(batch, mode=mode)
-            outputs = self.model(
-                input_ids=inputs['input_ids'].to('cuda'),
-                attention_mask=inputs['attention_mask'].to('cuda'),
-            )
+    def forward(self, batch):
+        inputs = self.batch_tokenize(batch, mode='train')
+        outputs = self.model(
+            input_ids=inputs['input_ids'].to('cuda'),
+            attention_mask=inputs['attention_mask'].to('cuda'),
+            labels=inputs['input_ids'].to('cuda')
+        )
         return outputs.loss, outputs.logits
 
     
     def training_step(self, batch, batch_idx):
-        loss, logits = self(batch, mode='train')
+        loss, logits = self(batch)
         self.log('train_loss', loss, batch_size=len(batch['sentence_noisy']), on_step=True, on_epoch=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss, logits = self(batch, mode='train')
+        loss, logits = self(batch)
         self.log('valid_loss', loss, batch_size=len(batch['sentence_noisy']))
         return loss
+    
+    def predict_step(self, batch, batch_idx):
+        inputs = self.batch_tokenize(batch, mode='inference')
+        outputs = self.model.generate(**inputs)
+        generated_ids = outputs[:, inputs['input_ids'].shape[1]:]
+        decoded = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+        return decoded
+        
     
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
