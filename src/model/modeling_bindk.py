@@ -10,7 +10,7 @@ from transformers import AutoModelForCausalLM, AutoConfig
 from transformers.modeling_attn_mask_utils import _prepare_4d_attention_mask
 from transformers.modeling_outputs import BaseModelOutputWithPast
 
-from src.tokenizer.modeling_tokenizer import BINDKTokenizer
+from src.tokenizer.modeling_tokenizer import BINDKTokenizer, SentenceTokenizer
 
 
 class BINDK(nn.Module):
@@ -183,7 +183,10 @@ class LitBINDK(L.LightningModule):
         lr=5e-5,
         epochs=10,
         task='jamo',
-        use_bntd=True
+        use_bntd=True,
+        inference_sentence_min_length=32,
+        inference_sentence_max_length=64,
+        inference_sentence_n_overlap=3
     ):
         super().__init__()
         self.base_model_name = base_model_name
@@ -193,6 +196,9 @@ class LitBINDK(L.LightningModule):
         self.epochs = epochs
         self.task = task
         self.use_bntd = use_bntd
+        self.inference_sentence_min_length = inference_sentence_min_length
+        self.inference_sentence_max_length = inference_sentence_max_length
+        self.inference_sentence_n_overlap = inference_sentence_n_overlap
 
         self.bindk = BINDK(
             base_model_name=base_model_name,
@@ -202,6 +208,12 @@ class LitBINDK(L.LightningModule):
         )
         bindk_tokenizer = BINDKTokenizer(base_tokenizer_name=base_model_name)
         self.bindk.set_tokenizer(bindk_tokenizer)
+        self.sentence_tokenizer = SentenceTokenizer(
+            min_length=inference_sentence_min_length,
+            max_length=inference_sentence_max_length,
+            n_overlap=inference_sentence_n_overlap,
+            roll=False
+        )
 
     def forward(self, batch, task, pred):
         if task=='jamo':
@@ -259,8 +271,38 @@ class LitBINDK(L.LightningModule):
         return loss
     
     def predict_step(self, batch, batch_idx):
-        loss, logits, pred_ids, sentence_denoised = self(batch, task=self.task, pred=True)
-        return sentence_denoised
+        if self.inference_sentence_n_overlap > 1:
+            sentences_noisy = batch['sentence_noisy']
+            sentences_denoised = []
+            for sentence_noisy in sentences_noisy:
+                sentence_denoised_chunks = []
+                sentence_noisy_chunks = self.sentence_tokenizer.split_text(sentence_noisy)
+                for sentence_noisy_chunk in sentence_noisy_chunks:
+                    mini_batch = {
+                        'sentence_noisy': [sentence_noisy_chunk],
+                        'sentence': None
+                    }
+                    loss, logits, pred_ids, sentence_denoised_chunk = self(mini_batch, task=self.task, pred=True)
+                    sentence_denoised_chunks.append(sentence_denoised_chunk[0])
+                sentence_denoised = ''.join(sentence_denoised_chunks)
+                sentences_denoised.append(sentence_denoised)
+        else:
+            sentences_noisy = batch['sentence_noisy']
+            sentences_denoised = []
+            for sentence_noisy in sentences_noisy:
+                sentence_denoised_chunks_overlapped = []
+                sentence_noisy_chunks = self.sentence_tokenizer.split_text(sentence_noisy)
+                sentence_noisy_chunks_overlapped = self.sentence_tokenizer.overlap(sentence_noisy_chunks)
+                for start_idx, end_idx, sentence_noisy_chunk in sentence_noisy_chunks_overlapped:
+                    mini_batch = {
+                        'sentence_noisy': [sentence_noisy_chunk],
+                        'sentence': None
+                    }
+                    loss, logits, pred_ids, sentence_denoised_chunk = self(mini_batch, task=self.task, pred=True)
+                    sentence_denoised_chunks_overlapped.append((start_idx, end_idx, sentence_denoised_chunk[0]))
+                sentence_denoised = self.sentence_tokenizer.decode_overlap(sentence_denoised_chunks_overlapped)
+                sentences_denoised.append(sentence_denoised)
+        return sentences_denoised
     
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(

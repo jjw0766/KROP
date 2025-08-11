@@ -53,3 +53,4 @@ secrets.*
 konoise/*
 
 lightning_logs/
+checkpoints/
