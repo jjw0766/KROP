@@ -8,35 +8,6 @@ from torch.utils.data import Dataset, DataLoader
 from konoise import NoiseGenerator
 
 from src.tokenizer.modeling_tokenizer import SentenceTokenizer
-
-class MABSATrainDataset(Dataset):
-    def __init__(self, filename):
-        self.genertor = NoiseGenerator()
-        self.noise_methods = ['change-vowels', 'palatalization', 'linking', 'liquidization', 'nasalization', 'assimilation']
-        self.sentences = []
-        self.sentences_noisy = []
-
-        with open(filename, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-            for sentence in lines:
-                sentence = sentence.strip()
-                sentence = sentence.split('####')[0]
-                sentence_noisy_all = sentence
-                for noise_method in self.noise_methods:
-                    sentence_noisy_all = self.genertor.generate(sentence_noisy_all, noise_method, 1)[0][0]
-                if sentence == sentence_noisy_all:
-                    continue
-                self.sentences.append(sentence)   
-                self.sentences_noisy.append(sentence_noisy_all)
-
-    def __len__(self):
-        return len(self.sentences)
-
-    def __getitem__(self, idx):
-        return {
-            'sentence': self.sentences[idx],
-            'sentence_noisy': self.sentences_noisy[idx]
-        }
     
 class TrainValCollateFn:
     def __init__(self, max_length, mode='train'):
@@ -69,16 +40,6 @@ class TrainValCollateFn:
             'sentence_noisy': sentences_noisy,
             'sentence': sentences
         }
-
-
-def get_m_absa_train_dataloader(filename, batch_size, max_length):
-    ds = MABSATrainDataset(filename)
-    return DataLoader(ds, batch_size=batch_size, collate_fn=TrainValCollateFn(max_length=max_length))
-
-def get_m_absa_dev_test_dataloader(dataset_name, **kwargs):
-    ds = datasets.load_dataset(dataset_name)
-    dev_ds, test_ds = ds['dev'], ds['test']
-    return DataLoader(dev_ds, **kwargs), DataLoader(test_ds, **kwargs)
 
 def get_train_dataloader(dataset_name, batch_size, max_length):
     ds = datasets.load_dataset(dataset_name)
