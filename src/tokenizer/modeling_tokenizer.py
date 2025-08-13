@@ -3,7 +3,95 @@ import torch
 
 from collections import deque, Counter
 from jamotools import split_syllables, join_jamos
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, Qwen2Tokenizer
+
+class BonitaTokenizer:
+    def __init__(self, base_tokenizer_name: Qwen2Tokenizer, bot_token='<im_start>', eot_token='<im_end>', eod_token='<endoftext>'):
+        self.base_tokenizer_name = base_tokenizer_name
+        self.base_tokenizer = AutoTokenizer.from_pretrained(self.base_tokenizer_name)
+        self.pad_token, self.pad_token_id = self.get_pad_token(self.base_tokenizer)
+        self.bot_token = bot_token
+        self.bot_token_id = self.base_tokenizer.encode(bot_token, add_special_tokens=False)[-1]
+        self.eot_token = eot_token
+        self.eot_token_id = self.base_tokenizer.encode(eot_token, add_special_tokens=False)[-1]
+        self.eod_token = eod_token
+        self.eod_token_id = self.base_tokenizer.encode(eod_token, add_special_tokens=False)[-1]
+        self.space_token_id = self.base_tokenizer.encode(' ', add_special_tokens=False)[-1]
+
+    def get_pad_token(self, tokenizer):
+        max_len = -1
+        max_len_token = None
+        for token, token_id in tokenizer.vocab.items():
+            if len(token) > max_len:
+                max_len = len(token)
+                max_len_token = token
+        return max_len_token, tokenizer.vocab[max_len_token]
+
+    def encode(self, sentence_noisy, sentence):
+        # messages = [
+        #     {"role": "user", "content": f"Task: Correct the text, Input: {sentence_noisy}"},
+        # ]
+        # prefix_ids = self.base_tokenizer.apply_chat_template(
+        #     messages,
+        #     tokenize=True,
+        #     add_generation_prompt=True,
+        #     enable_thinking=False, # Switches between thinking and non-thinking modes. Default is True.
+        # )
+        prefix_ids = self.base_tokenizer.encode(f"Task: Correct the text, Input: {sentence_noisy}")
+
+        sentence_noisy_ids = []
+        for char in sentence_noisy:
+            sentence_noisy_id = self.base_tokenizer.encode(char, add_special_tokens=False)
+            sentence_noisy_id = sentence_noisy_id + (4-len(sentence_noisy_id)) * [self.pad_token_id]
+            sentence_noisy_ids.extend(sentence_noisy_id)
+        sentence_ids = []
+        for char in sentence:
+            sentence_id = self.base_tokenizer.encode(char, add_special_tokens=False)
+            sentence_id = sentence_id + (4-len(sentence_id)) * [self.pad_token_id]
+            sentence_ids.extend(sentence_id)
+
+        encoded_ids = [self.bot_token_id] + prefix_ids + sentence_noisy_ids + [self.eot_token_id]
+        label_ids = [-100] + [-100] * len(prefix_ids) + sentence_ids + [-100]
+        return encoded_ids, label_ids
+
+    def decode(self, encoded_ids, label_ids):
+        sentence_ids = [encoded_id for encoded_id, label_id in zip(encoded_ids, label_ids) if label_id!=-100]
+
+        sentence_ids = deque(sentence_ids)
+        decoded = []
+        past_ids = []
+        while len(sentence_ids):
+            sentence_id = sentence_ids.popleft()
+
+            decoded.append(self.base_tokenizer.decode(past_ids))
+            past_ids = []
+            id1 = sentence_id
+            id2 = sentence_ids.popleft()
+            id3 = sentence_ids.popleft()
+            id4 = sentence_ids.popleft()
+            char = self.base_tokenizer.decode([id1, id2, id3, id4])[:1]
+            decoded.append(char)
+        decoded.append(self.base_tokenizer.decode(past_ids))
+        return ''.join(decoded)
+
+    def batch_encode(self, sentences_noisy, sentences):
+        input_ids = []
+        attention_mask = []
+        label_ids = []
+        for sentence_noisy, sentence in zip(sentences_noisy, sentences):
+            input_ids_row, label_ids_row = self.encode(sentence_noisy, sentence)
+            input_ids.append(input_ids_row)
+            label_ids.append(label_ids_row)
+        max_length = max(list(map(len, input_ids)))
+        for i in range(len(sentences)):
+            input_ids[i] = input_ids[i] + (max_length-len(input_ids[i])) * [self.eod_token_id]
+            label_ids[i] = label_ids[i] + (max_length-len(label_ids[i])) * [-100]
+            attention_mask.append([1 if input_id!=self.eod_token_id else 0 for input_id in input_ids[i]])
+        return (
+            torch.LongTensor(input_ids),
+            torch.LongTensor(label_ids),
+            torch.LongTensor(attention_mask),
+        )
 
 class BINDKTokenizer:    
     def __init__(self, base_tokenizer_name):
@@ -360,13 +448,14 @@ class BINDTokenizer:
         self.base_tokenizer.pad_token = self.base_tokenizer.decode(self.pad_token_id)
         self.space_token_id = self.base_tokenizer.encode(' ', add_special_tokens=False)[-1]
 
-    def encode_char(self, sentence):
-        sentence = self.base_tokenizer.bos_token + sentence + self.base_tokenizer.eos_token
+    def encode_char(self, sentence, add_bos_eos_token=True):
         encoded_ids = []
         for char in sentence:
             encoded_id = self.base_tokenizer.encode(char, add_special_tokens=False)
             encoded_id = encoded_id + (4-len(encoded_id)) * [self.pad_token_id]
             encoded_ids.extend(encoded_id)
+        if add_bos_eos_token:
+            encoded_ids = [self.base_tokenizer.bos_token_id] + encoded_ids + [self.base_tokenizer.eos_token_id]
         return encoded_ids
 
     def decode_char(self, encoded_ids, contain_bos_eos_token=True):

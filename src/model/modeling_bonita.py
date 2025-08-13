@@ -10,10 +10,10 @@ from transformers import AutoModelForCausalLM, AutoConfig
 from transformers.modeling_attn_mask_utils import _prepare_4d_attention_mask
 from transformers.modeling_outputs import BaseModelOutputWithPast
 
-from src.tokenizer.modeling_tokenizer import BINDTokenizer, SentenceTokenizer
+from src.tokenizer.modeling_tokenizer import BonitaTokenizer, SentenceTokenizer
 
 
-class BIND(nn.Module):
+class Bonita(nn.Module):
     def __init__(self, base_model_name='Qwen/Qwen3-0.6B', use_sliding_window=True, sliding_window=12, use_bntd=True):
         super().__init__()
         self.base_model_config = AutoConfig.from_pretrained(base_model_name)
@@ -26,16 +26,16 @@ class BIND(nn.Module):
             base_model.model.forward = MethodType(model_forward, base_model.model)
         self.model = base_model
 
-    def set_tokenizer(self, bind_tokenizer: BINDTokenizer):
-        self.tokenizer = bind_tokenizer
+    def set_tokenizer(self, bonita_tokenizer: BonitaTokenizer):
+        self.tokenizer = bonita_tokenizer
         
-    def forward(self, sentence_noisy, sentence=None, pred=False):
-        output_ids = None
-        input_ids, attention_mask = self.tokenizer.batch_encode_char(sentence_noisy)
-        if sentence is not None:
-            output_ids, *_ = self.tokenizer.batch_encode_char(sentence)
+    def forward(self, sentence_noisy, sentence, pred=False):
+        if sentence is None:
+            sentence = sentence_noisy
+        input_ids, label_ids, attention_mask = self.tokenizer.batch_encode(sentence_noisy, sentence)
 
         input_ids = input_ids.to('cuda')
+        label_ids = label_ids.to('cuda')
         attention_mask = attention_mask.to('cuda')
 
         logits = self.model(
@@ -43,21 +43,18 @@ class BIND(nn.Module):
             attention_mask=attention_mask,
         ).logits
 
-        loss = None
-        if output_ids is not None:
-            output_ids = output_ids.to('cuda')
-            loss = nn.CrossEntropyLoss(reduction='mean')(
-                logits[:, :-1, :].reshape(-1, self.model.config.vocab_size),
-                output_ids[:,1:].reshape(-1),
-            )
+        loss = nn.CrossEntropyLoss(reduction='mean')(
+            logits[:, :-1, :].reshape(-1, self.model.config.vocab_size),
+            label_ids[:,1:].reshape(-1),
+        )
 
-        pred_ids = None
+        pred_ids = logits.argmax(-1).detach().cpu().tolist()
+        label_ids = label_ids.cpu()
         sentence_denoised = []
         if pred:
             for idx in range(input_ids.shape[0]):
-                pred_ids = logits[idx][:-2].argmax(-1).detach().cpu().tolist()
-                sentence_denoised.append(self.tokenizer.decode_char(pred_ids, False))
-        return loss, logits, pred_ids, sentence_denoised
+                sentence_denoised.append(self.tokenizer.decode(pred_ids[idx][:-1], label_ids[idx][1:]))
+        return loss, logits, sentence_denoised
  
     
 def model_forward(
@@ -121,7 +118,7 @@ def model_forward(
     )
 
 
-class LitBIND(L.LightningModule):
+class LitBonita(L.LightningModule):
     def __init__(
         self,
         base_model_name='Qwen/Qwen3-0.6B',
@@ -145,14 +142,14 @@ class LitBIND(L.LightningModule):
         self.inference_sentence_max_length = inference_sentence_max_length
         self.inference_sentence_n_overlap = inference_sentence_n_overlap
 
-        self.bind = BIND(
+        self.bonita = Bonita(
             base_model_name=base_model_name,
             use_sliding_window=use_sliding_window,
             sliding_window=sliding_window,
             use_bntd=use_bntd
         )
-        bind_tokenizer = BINDTokenizer(base_tokenizer_name=base_model_name)
-        self.bind.set_tokenizer(bind_tokenizer)
+        bonita_tokenizer = BonitaTokenizer(base_tokenizer_name=base_model_name)
+        self.bonita.set_tokenizer(bonita_tokenizer)
         self.sentence_tokenizer = SentenceTokenizer(
             min_length=inference_sentence_min_length,
             max_length=inference_sentence_max_length,
@@ -161,20 +158,20 @@ class LitBIND(L.LightningModule):
         )
 
     def forward(self, batch, pred):
-        loss, logits, pred_ids, sentence_denoised = self.bind.forward(
+        loss, logits, sentence_denoised = self.bonita.forward(
             sentence_noisy=batch['sentence_noisy'],
             sentence=batch['sentence'],
             pred=pred
         )
-        return loss, logits, pred_ids, sentence_denoised
+        return loss, logits, sentence_denoised
     
     def training_step(self, batch, batch_idx):
-        loss, logits, *_ = self(batch, pred=False)
+        loss, logits, _ = self(batch, pred=False)
         self.log('train_loss', loss, batch_size=len(batch['sentence_noisy']), on_step=True, on_epoch=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss, logits, *_ = self(batch, pred=False)
+        loss, logits, _ = self(batch, pred=False)
         self.log('valid_loss', loss, batch_size=len(batch['sentence_noisy']))
         return loss
     
@@ -190,7 +187,7 @@ class LitBIND(L.LightningModule):
                         'sentence_noisy': [sentence_noisy_chunk],
                         'sentence': None
                     }
-                    loss, logits, pred_ids, sentence_denoised_chunk = self(mini_batch, pred=True)
+                    loss, logits, sentence_denoised_chunk = self(mini_batch, pred=True)
                     sentence_denoised_chunks.append(sentence_denoised_chunk[0])
                 sentence_denoised = ''.join(sentence_denoised_chunks)
                 sentences_denoised.append(sentence_denoised)
@@ -206,7 +203,7 @@ class LitBIND(L.LightningModule):
                         'sentence_noisy': [sentence_noisy_chunk],
                         'sentence': None
                     }
-                    loss, logits, pred_ids, sentence_denoised_chunk = self(mini_batch, pred=True)
+                    loss, logits, sentence_denoised_chunk = self(mini_batch, pred=True)
                     sentence_denoised_chunks_overlapped.append((start_idx, end_idx, sentence_denoised_chunk[0]))
                 sentence_denoised = self.sentence_tokenizer.decode_overlap(sentence_denoised_chunks_overlapped)
                 sentences_denoised.append(sentence_denoised)
