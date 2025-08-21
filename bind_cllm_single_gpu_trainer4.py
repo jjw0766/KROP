@@ -1,6 +1,6 @@
 import os
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"]="2"
+os.environ["CUDA_VISIBLE_DEVICES"]="4"
 
 
 from dotenv import load_dotenv
@@ -15,9 +15,9 @@ from src.data.dataset import get_train_dataloader, get_dev_dataloader, get_test_
 
 SEED=42
 DATASET_NAME = 'jwengr/C-LLM'
-MINI_BATCH_SIZE=8
-N_BATCH = 4
-BASE_MODEL_NAME='Qwen/Qwen3-1.7B-Base'
+MINI_BATCH_SIZE=2
+N_BATCH = 16
+BASE_MODEL_NAME='Qwen/Qwen3-4B-Base'
 EPOCHS=10
 LEARNING_RATE = 1e-4
 USE_BNTD=True
