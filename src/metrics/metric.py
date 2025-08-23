@@ -371,3 +371,53 @@ def calculate_cherrant_metric(name, base_dir):
     print(prf)
 
     return prf_list
+
+
+# https://github.com/CAU-AutoML/Bitabuse/blob/main/metrics.py
+import re
+def get_label_words_and_idx(label):
+    return [
+        (m.group(), m.start(), m.end()) for m in re.finditer(r"(\w[\w']*\w|\w)", label)
+    ]
+
+
+import ssl
+
+import numpy as np
+
+# from OpenAttack.metric import BLEU, JaccardWord
+# from OpenAttack.text_process.tokenizer import PunctTokenizer
+
+# # setting openattack metrics
+# ssl._create_default_https_context = ssl._create_unverified_context
+
+# punct_tokenizer = PunctTokenizer()
+# bleu = BLEU(punct_tokenizer)
+# jaccard_word = JaccardWord(punct_tokenizer)
+
+
+def word_accuracy(pred, label, input, debug=False):
+    label_words_and_idx = get_label_words_and_idx(label)
+    label_words = [word for word, _, _ in label_words_and_idx]
+
+    pred_words = [pred[start:end] for _, start, end in label_words_and_idx]
+    input_words = [input[start:end] for _, start, end in label_words_and_idx]
+
+    vp_words = [  # [[pred_word, label_word], ...]
+        [p, l] for p, l, i in zip(pred_words, label_words, input_words) if l != i
+    ]
+    if debug and len(vp_words) == 0:
+        print("input:", input)
+        print("label:", label)
+        print("pred:", pred)
+    correct_words = [[p, l] for p, l in vp_words if p == l]
+
+    # if there is no vp word, then warning
+    if len(vp_words) == 0:
+        print(
+            "WARNING: There is no vp word in the input text. Word accuracy is considered to be 1.0."
+        )
+        print("\tinput:", input)
+        print("\tinput_words:", input_words)
+    correct, total = len(correct_words), len(vp_words)
+    return correct / total if total > 0 else 1.0

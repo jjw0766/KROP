@@ -26,6 +26,7 @@ hf-xet = "*"
 peft = "*"
 accelerate = "*"
 bitsandbytes = "*"
+jsonlines = "*"
 
 [dev-packages]
 

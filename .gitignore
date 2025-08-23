@@ -54,3 +54,6 @@ konoise/*
 
 lightning_logs/
 checkpoints/
+checkpoint/
+
+data/
