@@ -474,53 +474,55 @@ class BINDTokenizer:
         sentence = self.base_tokenizer.bos_token + sentence + self.base_tokenizer.eos_token
         encoded_ids = []
         token_type_ids = []
-        past_chars = ''
         for char in sentence:
-            if self.target_charts_dict.get(ord(char)):
-                if past_chars:
-                    past_chars_encoded = self.base_tokenizer.encode(past_chars, add_special_tokens=False)
-                    encoded_ids.extend(past_chars_encoded)
-                    token_type_ids.extend([0]*len(past_chars_encoded))
-                past_chars=''
-                encoded_id = self.base_tokenizer.encode(char, add_special_tokens=False)
-                encoded_id = encoded_id + (4-len(encoded_id)) * [self.pad_token_id]
-                encoded_ids.extend(encoded_id)
-                token_type_ids.extend([1,1,1,1])
+            encoded_id = self.base_tokenizer.encode(char, add_special_tokens=False)
+            encoded_id = encoded_id + (4-len(encoded_id)) * [self.pad_token_id]
+            encoded_ids.extend(encoded_id)
+            if self.target_charts_dict:
+                if self.target_charts_dict.get(ord(char)):
+                    token_type_ids.extend([1,1,1,1])
+                else:
+                    token_type_ids.extend([0,0,0,0])
             else:
-                past_chars = past_chars+char
-        if past_chars:
-            past_chars_encoded = self.base_tokenizer.encode(past_chars, add_special_tokens=False)
-            encoded_ids.extend(past_chars_encoded)
-            token_type_ids.extend([0]*len(past_chars_encoded))
+                token_type_ids.extend([1,1,1,1])
         return encoded_ids, token_type_ids
     
-    def decode_char(self, encoded_ids, token_type_ids, contain_bos_eos_token=True):
+    def decode_char(self, encoded_ids, token_type_ids, source_ids=None, contain_bos_eos_token=True):
+        if source_ids is None:
+            source_ids = encoded_ids
+
         if contain_bos_eos_token:
             encoded_ids = encoded_ids[1:-1]
             token_type_ids = token_type_ids[1:-1]
+            source_ids = source_ids[1:-1]
 
         encoded_ids = deque(encoded_ids)
         token_type_ids = deque(token_type_ids)
+        source_ids = deque(source_ids)
         decoded = []
-        past_ids = []
         while len(encoded_ids):
-            encoded_id = encoded_ids.popleft()
-            token_type_id = token_type_ids.popleft()
-            if token_type_id==0:
-                past_ids.append(encoded_id)
-            else:
-                decoded.append(self.base_tokenizer.decode(past_ids))
-                past_ids = []
-                id1 = encoded_id
-                id2 = encoded_ids.popleft()
-                id3 = encoded_ids.popleft()
-                id4 = encoded_ids.popleft()
-                token_type_ids.popleft()
-                token_type_ids.popleft()
-                token_type_ids.popleft()
-                char = self.base_tokenizer.decode([id1, id2, id3, id4])[:1]
-                decoded.append(char)
-        decoded.append(self.base_tokenizer.decode(past_ids))
+            id1 = encoded_ids.popleft()
+            id2 = encoded_ids.popleft()
+            id3 = encoded_ids.popleft()
+            id4 = encoded_ids.popleft()
+            tid_1 = token_type_ids.popleft()
+            tid_2 = token_type_ids.popleft()
+            tid_3 = token_type_ids.popleft()
+            tid_4 = token_type_ids.popleft()
+            sid_1 = source_ids.popleft()
+            sid_2 = source_ids.popleft()
+            sid_3 = source_ids.popleft()
+            sid_4 = source_ids.popleft()
+            if tid_1==0:
+                id1 = sid_1
+            if tid_2==0:
+                id2 = sid_2
+            if tid_3==0:
+                id3 = sid_3
+            if tid_4==0:
+                id4 = sid_4
+            char = self.base_tokenizer.decode([id1, id2, id3, id4])[:1]
+            decoded.append(char)
         return ''.join(decoded)
 
     def batch_encode_char(self, sentences):
