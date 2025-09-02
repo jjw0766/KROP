@@ -14,7 +14,7 @@ from src.tokenizer.modeling_tokenizer import BINDCTokenizer, SentenceTokenizer
 
 
 class BINDC(nn.Module):
-    def __init__(self, base_model_name='Qwen/Qwen3-0.6B', use_sliding_window=True, sliding_window=12, use_bntd=True):
+    def __init__(self, base_model_name='Qwen/Qwen3-0.6B', use_sliding_window=True, sliding_window=16, use_bntd=True):
         super().__init__()
         self.base_model_config = AutoConfig.from_pretrained(base_model_name)
         self.base_model_config._attn_implementation = 'eager'
@@ -214,7 +214,7 @@ class LitBINDC(L.LightningModule):
                         'sentence_noisy': [sentence_noisy_chunk],
                         'sentence': None
                     }
-                    loss, logits, pred_ids, sentence_denoised_chunk = self(mini_batch, task=self.task, pred=True)
+                    loss, logits, pred_ids, sentence_denoised_chunk = self(mini_batch, pred=True)
                     sentence_denoised_chunks.append(sentence_denoised_chunk[0])
                 sentence_denoised = ''.join(sentence_denoised_chunks)
                 sentences_denoised.append(sentence_denoised)

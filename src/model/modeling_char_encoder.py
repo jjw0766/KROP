@@ -12,7 +12,7 @@ from src.tokenizer.modeling_tokenizer import CharEncoderTokenizer, SentenceToken
 
 
 class CharEncoder(nn.Module):
-    def __init__(self, base_model_name='klue/roberta-small'):
+    def __init__(self, base_model_name):
         super().__init__()
         self.model = AutoModelWithLMHead.from_pretrained(base_model_name)
 
@@ -54,7 +54,7 @@ class CharEncoder(nn.Module):
 class LitCharEncoder(L.LightningModule):
     def __init__(
         self,
-        base_model_name='klue/roberta-small',
+        base_model_name,
         space_token='[SEP]',
         unk_token='[UNK]',
         pad_token='[PAD]',

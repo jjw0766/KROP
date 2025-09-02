@@ -346,6 +346,9 @@ class BINDCTokenizer:
                 for code in range(start, end + 1)
             )
         )
+        self.hanzi_chars_dict = {
+            hanzi_char:True for hanzi_char in self.hanzi_chars
+        }
 
         self.char_ids = []
         for hanzi_char in self.hanzi_chars:
@@ -369,7 +372,7 @@ class BINDCTokenizer:
         token_type_ids = []
         past_chars = ''
         for char in sentence:
-            if char in self.hanzi_chars:
+            if self.hanzi_chars_dict.get(char):
                 if past_chars:
                     past_chars_encoded = self.base_tokenizer.encode(past_chars, add_special_tokens=False)
                     encoded_ids.extend(past_chars_encoded)
@@ -436,8 +439,23 @@ class BINDCTokenizer:
         )
     
 class BINDTokenizer:    
-    def __init__(self, base_tokenizer_name):
+    def __init__(self, base_tokenizer_name, target_chars=[]):
         self.base_tokenizer_name = base_tokenizer_name
+        self.target_chars = target_chars
+        if target_chars == 'hanzi':
+            self.target_chars = ([
+                list(range(0x4E00, 0x9FFF)),       # 기본 한자
+                list(range(0x3400, 0x4DBF)),       # 확장 A
+                list(range(0xF900, 0xFAFF)),       # 호환 한자
+                list(range(0x20000, 0x2A6DF)),     # 확장 B
+                list(range(0x2A700, 0x2B73F)),     # 확장 C
+                list(range(0x2B740, 0x2B81F)),     # 확장 D
+                list(range(0x2B820, 0x2CEAF)),     # 확장 E
+                list(range(0x2CEB0, 0x2EBEF)),     # 확장 F
+            ])
+            self.target_chars = sum(self.target_chars, [])
+            print('Using hanzi chars as target chars.')
+
         self.base_tokenizer = AutoTokenizer.from_pretrained(self.base_tokenizer_name)
         self.base_tokenizer.bos_token_id = self.base_tokenizer.encode('<|im_start|>', add_special_tokens=False)[-1]
         self.base_tokenizer.bos_token = '<|im_start|>'
@@ -448,51 +466,132 @@ class BINDTokenizer:
         self.base_tokenizer.pad_token = self.base_tokenizer.decode(self.pad_token_id)
         self.space_token_id = self.base_tokenizer.encode(' ', add_special_tokens=False)[-1]
 
-    def encode_char(self, sentence, add_bos_eos_token=True):
+        self.target_chars_dict = {
+            target_char:True for target_char in self.target_chars
+        }
+
+    def encode_char(self, sentence):
+        # sentence = self.base_tokenizer.bos_token + sentence + self.base_tokenizer.eos_token
         encoded_ids = []
+        token_type_ids = []
         for char in sentence:
             encoded_id = self.base_tokenizer.encode(char, add_special_tokens=False)
             encoded_id = encoded_id + (4-len(encoded_id)) * [self.pad_token_id]
             encoded_ids.extend(encoded_id)
-        if add_bos_eos_token:
-            encoded_ids = [self.base_tokenizer.bos_token_id] + encoded_ids + [self.base_tokenizer.eos_token_id]
-        return encoded_ids
+            if self.target_chars_dict:
+                if self.target_chars_dict.get(ord(char)):
+                    token_type_ids.extend([1,1,1,1])
+                else:
+                    token_type_ids.extend([0,0,0,0])
+            else:
+                token_type_ids.extend([1,1,1,1])
+        encoded_ids = [self.base_tokenizer.bos_token_id] + encoded_ids + [self.base_tokenizer.eos_token_id]
+        token_type_ids = [0] + token_type_ids + [0]
+        return encoded_ids, token_type_ids
+    
+    def decode_char(self, encoded_ids, token_type_ids, source_ids=None, contain_bos_eos_token=True):
+        if source_ids is None:
+            source_ids = encoded_ids
 
-    def decode_char(self, encoded_ids, contain_bos_eos_token=True):
         if contain_bos_eos_token:
             encoded_ids = encoded_ids[1:-1]
+            token_type_ids = token_type_ids[1:-1]
+            source_ids = source_ids[1:-1]
 
         encoded_ids = deque(encoded_ids)
+        token_type_ids = deque(token_type_ids)
+        source_ids = deque(source_ids)
         decoded = []
-        past_ids = []
         while len(encoded_ids):
-            encoded_id = encoded_ids.popleft()
-
-            decoded.append(self.base_tokenizer.decode(past_ids))
-            past_ids = []
-            id1 = encoded_id
+            id1 = encoded_ids.popleft()
             id2 = encoded_ids.popleft()
             id3 = encoded_ids.popleft()
             id4 = encoded_ids.popleft()
+            tid_1 = token_type_ids.popleft()
+            tid_2 = token_type_ids.popleft()
+            tid_3 = token_type_ids.popleft()
+            tid_4 = token_type_ids.popleft()
+            sid_1 = source_ids.popleft()
+            sid_2 = source_ids.popleft()
+            sid_3 = source_ids.popleft()
+            sid_4 = source_ids.popleft()
+            if tid_1==0:
+                id1 = sid_1
+            if tid_2==0:
+                id2 = sid_2
+            if tid_3==0:
+                id3 = sid_3
+            if tid_4==0:
+                id4 = sid_4
             char = self.base_tokenizer.decode([id1, id2, id3, id4])[:1]
             decoded.append(char)
-        decoded.append(self.base_tokenizer.decode(past_ids))
         return ''.join(decoded)
 
     def batch_encode_char(self, sentences):
         input_ids = []
         attention_mask = []
+        token_type_ids = []
         for sentence in sentences:
-            input_ids_row = self.encode_char(sentence)
+            input_ids_row, token_type_id = self.encode_char(sentence)
             input_ids.append(input_ids_row)
+            token_type_ids.append(token_type_id)
         max_length = max(list(map(len, input_ids)))
         for i in range(len(sentences)):
             input_ids[i] = input_ids[i] + (max_length-len(input_ids[i])) * [self.base_tokenizer.eos_token_id]
             attention_mask.append([1 if input_id!=self.base_tokenizer.eos_token_id else 0 for input_id in input_ids[i]])
+            token_type_ids[i] = token_type_ids[i] + (max_length-len(token_type_ids[i])) * [0]
         return (
             torch.LongTensor(input_ids),
             torch.LongTensor(attention_mask),
+            torch.LongTensor(token_type_ids)
         )
+
+    # def encode_char(self, sentence, add_bos_eos_token=True):
+    #     encoded_ids = []
+    #     for char in sentence:
+    #         encoded_id = self.base_tokenizer.encode(char, add_special_tokens=False)
+    #         encoded_id = encoded_id + (4-len(encoded_id)) * [self.pad_token_id]
+    #         encoded_ids.extend(encoded_id)
+    #     if add_bos_eos_token:
+    #         encoded_ids = [self.base_tokenizer.bos_token_id] + encoded_ids + [self.base_tokenizer.eos_token_id]
+    #     return encoded_ids
+
+    # def decode_char(self, encoded_ids, contain_bos_eos_token=True):
+    #     if contain_bos_eos_token:
+    #         encoded_ids = encoded_ids[1:-1]
+
+    #     encoded_ids = deque(encoded_ids)
+    #     decoded = []
+    #     past_ids = []
+    #     while len(encoded_ids):
+    #         encoded_id = encoded_ids.popleft()
+
+    #         decoded.append(self.base_tokenizer.decode(past_ids))
+    #         past_ids = []
+    #         id1 = encoded_id
+    #         id2 = encoded_ids.popleft()
+    #         id3 = encoded_ids.popleft()
+    #         id4 = encoded_ids.popleft()
+    #         char = self.base_tokenizer.decode([id1, id2, id3, id4])[:1]
+    #         decoded.append(char)
+    #     decoded.append(self.base_tokenizer.decode(past_ids))
+    #     return ''.join(decoded)
+
+    # def batch_encode_char(self, sentences):
+    #     input_ids = []
+    #     attention_mask = []
+    #     for sentence in sentences:
+    #         input_ids_row = self.encode_char(sentence)
+    #         input_ids.append(input_ids_row)
+    #     max_length = max(list(map(len, input_ids)))
+    #     for i in range(len(sentences)):
+    #         input_ids[i] = input_ids[i] + (max_length-len(input_ids[i])) * [self.base_tokenizer.eos_token_id]
+    #         attention_mask.append([1 if input_id!=self.base_tokenizer.eos_token_id else 0 for input_id in input_ids[i]])
+    #     return (
+    #         torch.LongTensor(input_ids),
+    #         torch.LongTensor(attention_mask),
+    #     )
+
     
 class CharEncoderTokenizer:
     def __init__(self, base_tokenizer_name, space_token, unk_token, pad_token):
@@ -511,26 +610,30 @@ class CharEncoderTokenizer:
             encoded_ids.extend(encoded_id)
         return encoded_ids
     
-    def decode_char(self, encoded_ids, sentence=None):
+    def decode_char(self, encoded_ids, sentence):
         encoded_ids = deque(encoded_ids)
         decoded = []
+        idx = 0
         while len(encoded_ids):
             encoded_id = encoded_ids.popleft()
-            char = self.base_tokenizer.decode([encoded_id])
+            char = self.base_tokenizer.decode([encoded_id], skip_special_tokens=True)[:1]
+            if (not char) or char==self.unk_token or char==self.pad_token:
+                char = sentence[idx]
             decoded.append(char)
         decoded = ''.join(decoded).replace(self.space_token, ' ')
-        if sentence:
-            decoded = decoded.replace(self.unk_token, 'ㆀ').replace(self.pad_token, 'ㆀ')
-            if len(sentence)!=len(decoded):
-                print(sentence)
-                print(decoded)
-            temp = []
-            for idx, char_decoded in enumerate(decoded):
-                if char_decoded=='ㆀ':
-                    temp.append(sentence[idx])
-                else:
-                    temp.append(char_decoded)
-            decoded = ''.join(temp)
+        if len(sentence)!=len(decoded):
+            print(sentence)
+            print(decoded)
+        # if sentence:
+        #     decoded = decoded.replace(self.unk_token, 'ㆀ').replace(self.pad_token, 'ㆀ')
+
+        #     temp = []
+        #     for idx, char_decoded in enumerate(decoded):
+        #         if char_decoded=='ㆀ':
+        #             temp.append(sentence[idx])
+        #         else:
+        #             temp.append(char_decoded)
+        #     decoded = ''.join(temp)
         return decoded
     
     def batch_encode_char(self, sentences):

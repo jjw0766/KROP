@@ -39,9 +39,10 @@ class BIND(nn.Module):
         
     def forward(self, sentence_noisy, sentence=None, pred=False):
         output_ids = None
-        input_ids, attention_mask = self.tokenizer.batch_encode_char(sentence_noisy)
+        input_ids, attention_mask, token_type_ids = self.tokenizer.batch_encode_char(sentence_noisy)
         if sentence is not None:
             output_ids, *_ = self.tokenizer.batch_encode_char(sentence)
+            output_ids[token_type_ids==0] = -100   # loss 계산시 무시하도록 -100으로 설정
 
         input_ids = input_ids.to('cuda')
         attention_mask = attention_mask.to('cuda')
@@ -59,12 +60,15 @@ class BIND(nn.Module):
                 output_ids[:,1:].reshape(-1),
             )
 
-        pred_ids = None
+        pred_ids = []
         sentence_denoised = []
         if pred:
             for idx in range(input_ids.shape[0]):
-                pred_ids = logits[idx][:-2].argmax(-1).detach().cpu().tolist()
-                sentence_denoised.append(self.tokenizer.decode_char(pred_ids, False))
+                input_ids_row = input_ids[idx].detach().cpu().tolist()[1:-1]
+                pred_ids_row = logits[idx][:-2].argmax(-1).detach().cpu().tolist()
+                token_type_ids_row = token_type_ids[idx].detach().cpu().tolist()[1:-1]
+                pred_ids.append(pred_ids_row)
+                sentence_denoised.append(self.tokenizer.decode_char(pred_ids_row, token_type_ids_row, input_ids_row, False))
         return loss, logits, pred_ids, sentence_denoised
 
 def gemma3_forward(
@@ -224,7 +228,8 @@ class LitBIND(L.LightningModule):
         use_bntd=True,
         inference_sentence_min_length=32,
         inference_sentence_max_length=64,
-        inference_sentence_n_overlap=3
+        inference_sentence_n_overlap=3,
+        target_chars=''
     ):
         super().__init__()
         self.base_model_name = base_model_name
@@ -243,7 +248,7 @@ class LitBIND(L.LightningModule):
             sliding_window=sliding_window,
             use_bntd=use_bntd
         )
-        bind_tokenizer = BINDTokenizer(base_tokenizer_name=base_model_name)
+        bind_tokenizer = BINDTokenizer(base_tokenizer_name=base_model_name, target_chars=target_chars)
         self.bind.set_tokenizer(bind_tokenizer)
         self.sentence_tokenizer = SentenceTokenizer(
             min_length=inference_sentence_min_length,
@@ -309,6 +314,7 @@ class LitBIND(L.LightningModule):
             self.parameters(),
             lr=self.lr,           # 또는 2e-4
         )
+        # return optimizer
 
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer,

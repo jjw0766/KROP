@@ -10,6 +10,7 @@ import lightning as L
 
 from lightning.pytorch.callbacks import ModelCheckpoint
 
+# from src.model.modeling_bindc import LitBINDC
 from src.model.modeling_bind import LitBIND
 from src.data.dataset import get_train_dataloader, get_dev_dataloader, get_test_dataloader
 
@@ -40,7 +41,8 @@ lit_bind = LitBIND(
     use_bntd=USE_BNTD,
     inference_sentence_max_length=INFERENCE_SENTENCE_MAX_LENGTH,
     inference_sentence_min_length=INFERENCE_SENTENCE_MIN_LENGTH,
-    inference_sentence_n_overlap=INFERENCE_SENTENCE_N_OVERLAP
+    inference_sentence_n_overlap=INFERENCE_SENTENCE_N_OVERLAP,
+    target_chars='hanzi'
 )
 
 checkpoint_callback = ModelCheckpoint(
