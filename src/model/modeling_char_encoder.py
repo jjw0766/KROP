@@ -47,7 +47,6 @@ class CharEncoder(nn.Module):
         logits = outputs.logits
         hidden_states = outputs.hidden_states[-1]
 
-
         loss = None
         correct_loss = None
         detect_loss = None

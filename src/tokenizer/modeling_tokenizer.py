@@ -579,7 +579,7 @@ class CharEncoderTokenizer:
         token_type_ids = []
         for char in sentence:
             if self.target_chars_dict:
-                if self.target_chars_dict.get(char):
+                if self.target_chars_dict.get(ord(char)):
                     token_type_ids.extend([1])
                 else:
                     token_type_ids.extend([0])
