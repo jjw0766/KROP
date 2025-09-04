@@ -54,13 +54,13 @@ class CharEncoder(nn.Module):
         if sentence is not None:
             correct_loss = nn.CrossEntropyLoss(reduction='mean')(
                 logits.reshape(-1, self.model.config.vocab_size),
-                output_ids.reshape(-1),
+                correct_ids.reshape(-1),
             )
 
             detect_logits = self.detect_head(hidden_states)  
             detect_loss = FocalLoss('multiclass', ignore_index=-100)(
                 detect_logits.reshape(-1, 2),
-                output_ids.reshape(-1),
+                detect_ids.reshape(-1),
             )
 
             loss = correct_loss + detect_loss
