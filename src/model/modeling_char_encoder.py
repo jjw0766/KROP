@@ -7,6 +7,7 @@ from typing import List, Optional, Tuple, Union
 from copy import deepcopy
 from torch.optim import AdamW
 from transformers import AutoModelWithLMHead
+from segmentation_models_pytorch.losses import FocalLoss
 
 from src.tokenizer.modeling_tokenizer import CharEncoderTokenizer, SentenceTokenizer
 
@@ -15,39 +16,63 @@ class CharEncoder(nn.Module):
     def __init__(self, base_model_name):
         super().__init__()
         self.model = AutoModelWithLMHead.from_pretrained(base_model_name)
+        hidden_size = self.model.config.hidden_size
+        self.detect_head = nn.Linear(hidden_size, 2)
 
     def set_tokenizer(self, tokenizer: CharEncoderTokenizer):
         self.tokenizer = tokenizer
 
     def forward(self, sentence_noisy, sentence=None, pred=False):
         output_ids = None
-        input_ids, attention_mask = self.tokenizer.batch_encode_char(sentence_noisy)
+        input_ids, attention_mask, token_type_ids = self.tokenizer.batch_encode_char(sentence_noisy)
         if sentence is not None:
             output_ids, *_ = self.tokenizer.batch_encode_char(sentence)
+
+            correct_ids = output_ids.clone().to('cuda')
+            correct_ids[token_type_ids == 0] = -100
+
+            detect_ids = ((input_ids != output_ids) * 1).type_as(output_ids).to('cuda')
+            detect_ids[token_type_ids == 0] = -100  # loss ignore index를 위해 masking
 
         input_ids = input_ids.to('cuda')
         attention_mask = attention_mask.to('cuda')
 
-        logits = self.model(
+        outputs = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             return_dict=True,
-        ).logits
+            output_hidden_states=True
+        )
+
+        logits = outputs.logits
+        hidden_states = outputs.hidden_states[-1]
+
 
         loss = None
-        if output_ids is not None:
-            output_ids = output_ids.to('cuda')
-            loss = nn.CrossEntropyLoss(reduction='mean')(
+        correct_loss = None
+        detect_loss = None
+        if sentence is not None:
+            correct_loss = nn.CrossEntropyLoss(reduction='mean')(
                 logits.reshape(-1, self.model.config.vocab_size),
                 output_ids.reshape(-1),
             )
 
-        pred_ids = None
+            detect_logits = self.detect_head(hidden_states)  
+            detect_loss = FocalLoss('multiclass', ignore_index=-100)(
+                detect_logits.reshape(-1, 2),
+                output_ids.reshape(-1),
+            )
+
+            loss = correct_loss + detect_loss
+
+        pred_ids = []
         sentence_denoised = []
         if pred:
             for idx in range(input_ids.shape[0]):
-                pred_ids = logits[idx].argmax(-1).detach().cpu().tolist()
-                sentence_denoised.append(self.tokenizer.decode_char(pred_ids, sentence_noisy[idx]))
+                pred_ids_row = logits[idx].argmax(-1).detach().cpu().tolist()
+                token_type_ids_row = token_type_ids[idx].cpu().tolist()
+                sentence_denoised.append(self.tokenizer.decode_char(pred_ids_row, token_type_ids_row, sentence_noisy[idx]))
+                pred_ids.append(pred_ids_row)
         return loss, logits, pred_ids, sentence_denoised
     
     
@@ -62,7 +87,8 @@ class LitCharEncoder(L.LightningModule):
         epochs=10,
         inference_sentence_min_length=32,
         inference_sentence_max_length=64,
-        inference_sentence_n_overlap=3
+        inference_sentence_n_overlap=3,
+        target_chars=[]
     ):
         super().__init__()
         self.base_model_name = base_model_name
@@ -73,7 +99,7 @@ class LitCharEncoder(L.LightningModule):
         self.inference_sentence_n_overlap = inference_sentence_n_overlap
 
         self.encoder = CharEncoder(base_model_name=base_model_name)
-        encoder_tokenizer = CharEncoderTokenizer(base_tokenizer_name=base_model_name, space_token=space_token, unk_token=unk_token, pad_token=pad_token)
+        encoder_tokenizer = CharEncoderTokenizer(base_tokenizer_name=base_model_name, space_token=space_token, unk_token=unk_token, pad_token=pad_token, target_chars=target_chars)
         self.encoder.set_tokenizer(encoder_tokenizer)
         self.sentence_tokenizer = SentenceTokenizer(
             min_length=inference_sentence_min_length,

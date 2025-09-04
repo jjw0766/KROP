@@ -68,25 +68,22 @@ class BIND(nn.Module):
         logits = outputs.logits
         hidden_states = outputs.hidden_states[-1]  # 마지막 layer hidden state [B, L, H]
 
-        # -------- Correct Loss (LM) --------
+        loss = None
         correct_loss = None
+        detect_loss = None
         if sentence is not None:
             correct_loss = nn.CrossEntropyLoss(reduction='mean')(
                 logits[:, :-1, :].reshape(-1, self.model.config.vocab_size),
                 correct_ids[:, 1:].reshape(-1),
             )
 
-        # -------- Detect Loss (BCE) --------
-        detect_loss = None
-        if sentence is not None:
             detect_logits = self.detect_head(hidden_states)             # [B, L, 2]
-            # detect_loss = FocalLoss('multiclass', ignore_index=-100)(
-            detect_loss = nn.CrossEntropyLoss()(
+            detect_loss = FocalLoss('multiclass', ignore_index=-100)(
                 detect_logits[:, :-1, :].reshape(-1, 2),
                 detect_ids[:, 1:].reshape(-1)
             )
-
-        loss = correct_loss# + detect_loss
+        
+            loss = correct_loss + detect_loss
 
         # -------- Prediction --------
         pred_ids, sentence_denoised = [], []
