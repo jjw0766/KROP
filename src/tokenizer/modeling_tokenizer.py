@@ -2,6 +2,7 @@ import re
 import torch
 
 from collections import deque, Counter
+from grapheme import graphemes
 from jamotools import split_syllables, join_jamos
 from transformers import AutoTokenizer, Qwen2Tokenizer
 
@@ -474,9 +475,10 @@ class BINDTokenizer:
         # sentence = self.base_tokenizer.bos_token + sentence + self.base_tokenizer.eos_token
         encoded_ids = []
         token_type_ids = []
-        for char in sentence:
+        for char in graphemes(sentence):
             encoded_id = self.base_tokenizer.encode(char, add_special_tokens=False)
             encoded_id = encoded_id + (4-len(encoded_id)) * [self.pad_token_id]
+            encoded_id = encoded_id[:4]
             encoded_ids.extend(encoded_id)
             if self.target_chars_dict:
                 if self.target_chars_dict.get(ord(char)):
@@ -501,6 +503,8 @@ class BINDTokenizer:
         encoded_ids = deque(encoded_ids)
         token_type_ids = deque(token_type_ids)
         source_ids = deque(source_ids)
+        # print(encoded_ids)
+        # print(source_ids)
         decoded = []
         while len(encoded_ids):
             id1 = encoded_ids.popleft()
@@ -556,6 +560,7 @@ class CharEncoderTokenizer:
         self.unk_token_id = self.base_tokenizer.encode(unk_token, add_special_tokens=False)[0]
         self.pad_token = pad_token
         self.pad_token_id = self.base_tokenizer.encode(pad_token, add_special_tokens=False)[0]
+        self.target_chars = target_chars
         if target_chars == 'hanzi':
             self.target_chars = ([
                 list(range(0x4E00, 0x9FFF)),       # 기본 한자
@@ -574,10 +579,11 @@ class CharEncoderTokenizer:
         }
 
     def encode_char(self, sentence):
-        sentence = sentence.replace(' ', self.space_token)
         encoded_ids = []
         token_type_ids = []
-        for char in sentence:
+        for char in graphemes(sentence):
+            if char==' ':
+                char = self.space_token
             if self.target_chars_dict:
                 if self.target_chars_dict.get(ord(char)):
                     token_type_ids.extend([1])
@@ -585,7 +591,7 @@ class CharEncoderTokenizer:
                     token_type_ids.extend([0])
             else:
                 token_type_ids.extend([1])
-            encoded_id = self.base_tokenizer.encode(char, add_special_tokens=False)
+            encoded_id = self.base_tokenizer.encode(char, add_special_tokens=False)[:1]
             if not encoded_id:
                 encoded_id = [self.unk_token_id]
             encoded_ids.extend(encoded_id)
@@ -594,14 +600,17 @@ class CharEncoderTokenizer:
     def decode_char(self, encoded_ids, token_type_ids, sentence):
         encoded_ids = deque(encoded_ids)
         token_type_ids = deque(token_type_ids)
+        sentence_chars = list(graphemes(sentence))
         decoded = []
         idx = 0
         while len(encoded_ids):
             encoded_id = encoded_ids.popleft()
             token_type_id = token_type_ids.popleft()
-            char = self.base_tokenizer.decode([encoded_id], skip_special_tokens=True)[:1]
+            char = self.base_tokenizer.decode([encoded_id], skip_special_tokens=True)
             if (not char) or char==self.unk_token or char==self.pad_token or token_type_id==0:
-                char = sentence[idx]
+                char = sentence_chars[idx]
+            else:
+                char = char[:1]
             decoded.append(char)
             idx+=1
         decoded = ''.join(decoded).replace(self.space_token, ' ')

@@ -5,6 +5,8 @@ import pickle
 import os
 import difflib
 
+from grapheme import graphemes
+
 def calculate_metric(src_sentences, tgt_sentences, pred_sentences, report_file=None, ignore_chars=""):
     """
     :param src_sentences: list of origin sentences
@@ -338,9 +340,9 @@ def input_check_and_process(src_sentences, tgt_sentences, pred_sentences):
     @return:
     """
     assert len(src_sentences) == len(tgt_sentences) == len(pred_sentences)
-    src_char_list = [list(s) for s in src_sentences]
-    tgt_char_list = [list(s) for s in tgt_sentences]
-    pred_char_list = [list(s) for s in pred_sentences]
+    src_char_list = [list(graphemes(s)) for s in src_sentences]
+    tgt_char_list = [list(graphemes(s)) for s in tgt_sentences]
+    pred_char_list = [list(graphemes(s)) for s in pred_sentences]
     assert all(
         [len(src) == len(tgt) == len(pred) for src, tgt, pred in zip(src_char_list, tgt_char_list, pred_char_list)]
     )

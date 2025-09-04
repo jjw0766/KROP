@@ -28,6 +28,7 @@ accelerate = "*"
 bitsandbytes = "*"
 jsonlines = "*"
 segmentation-models-pytorch = "*"
+grapheme = "*"
 
 [dev-packages]
 
