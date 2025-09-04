@@ -10,7 +10,6 @@ import lightning as L
 
 from lightning.pytorch.callbacks import ModelCheckpoint
 
-# from src.model.modeling_bindc import LitBINDC
 from src.model.modeling_bind import LitBIND
 from src.data.dataset import get_train_dataloader, get_dev_dataloader, get_test_dataloader
 
@@ -47,7 +46,7 @@ lit_bind = LitBIND(
 
 checkpoint_callback = ModelCheckpoint(
     dirpath='checkpoints/bind',
-    filename=f"{DATASET_NAME.split('/')[1]}-{BASE_MODEL_NAME.split('/')[1]}-interval0.05"+"-{epoch:02d}-{valid_loss:.4f}",
+    filename=f"{DATASET_NAME.split('/')[1]}-{BASE_MODEL_NAME.split('/')[1]}-addbce"+"-{epoch:02d}-{valid_loss:.4f}",
     monitor='valid_loss',
     mode='min',
     save_weights_only=True,
@@ -58,8 +57,7 @@ trainer = L.Trainer(
     callbacks=[checkpoint_callback],
     precision='bf16',
     max_epochs=EPOCHS,
-    accumulate_grad_batches=N_BATCH,
-    val_check_interval=0.5
+    accumulate_grad_batches=N_BATCH
 )
 
 trainer.fit(lit_bind, train_dl, dev_dl)

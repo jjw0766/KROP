@@ -15,9 +15,9 @@ from src.data.dataset import get_train_dataloader, get_dev_dataloader, get_test_
 
 SEED=42
 DATASET_NAME = 'jwengr/C-LLM'
-MINI_BATCH_SIZE=1
-N_BATCH = 32
-BASE_MODEL_NAME='Qwen/Qwen3-4B-Base'
+MINI_BATCH_SIZE=16
+N_BATCH = 2
+BASE_MODEL_NAME='Qwen/Qwen3-0.6B-Base'
 EPOCHS=10
 LEARNING_RATE = 1e-4
 USE_BNTD=True
@@ -46,7 +46,7 @@ lit_bind = LitBIND(
 
 checkpoint_callback = ModelCheckpoint(
     dirpath='checkpoints/bind',
-    filename=f"{DATASET_NAME.split('/')[1]}-{BASE_MODEL_NAME.split('/')[1]}"+"-{epoch:02d}-{valid_loss:.4f}",
+    filename=f"{DATASET_NAME.split('/')[1]}-{BASE_MODEL_NAME.split('/')[1]}-addbce-focalloss"+"-{epoch:02d}-{valid_loss:.4f}",
     monitor='valid_loss',
     mode='min',
     save_weights_only=True,

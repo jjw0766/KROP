@@ -27,6 +27,7 @@ peft = "*"
 accelerate = "*"
 bitsandbytes = "*"
 jsonlines = "*"
+segmentation-models-pytorch = "*"
 
 [dev-packages]
 

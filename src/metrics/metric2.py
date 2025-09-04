@@ -1,0 +1,121 @@
+def metric_all(preds, targs):
+    results = {}
+    res = sent_metric_detect(preds=preds, targs=targs)
+    results.update(res)
+    res = sent_metric_correct(preds=preds, targs=targs)
+    results.update(res)
+
+    res = character_metric_detect(preds=preds, targs=targs)
+    results.update(res)
+    res = character_metric_correct(preds=preds, targs=targs)
+    results.update(res)
+
+    return results
+
+
+def sent_metric_detect(preds, targs):
+    assert len(preds) == len(targs),f"{len(preds)},{len(targs)}"
+    tp, targ_p, pred_p, hit = 0, 0, 0, 0
+    for pred_item, targ_item in zip(preds, targs):
+        assert pred_item[0] == targ_item[0]
+        pred, targ = sorted(pred_item[1:]), sorted(targ_item[1:])
+        if targ != []:
+            targ_p += 1
+        if pred != []:
+            pred_p += 1
+        if len(pred) == len(targ) and all(p[0] == t[0] for p, t in zip(pred, targ)):
+            hit += 1
+        if pred != [] and len(pred) == len(targ) and all(p[0] == t[0] for p, t in zip(pred, targ)):
+            tp += 1
+
+    acc = hit / len(targs)
+    p = tp / pred_p
+    r = tp / targ_p
+    f1 = 2 * p * r / (p + r) if p + r > 0 else 0.0
+    results = {
+        'sent-detect-acc': acc * 100,
+        'sent-detect-p': p * 100,
+        'sent-detect-r': r * 100,
+        'sent-detect-f1': f1 * 100,
+    }
+    return results
+
+
+def sent_metric_correct(preds, targs):
+    assert len(preds) == len(targs)
+    tp, targ_p, pred_p, hit = 0, 0, 0, 0
+    for pred_item, targ_item in zip(preds, targs):
+        assert pred_item[0] == targ_item[0]
+        pred, targ = sorted(pred_item[1:]), sorted(targ_item[1:])
+        if targ != []:
+            targ_p += 1
+        if pred != []:
+            pred_p += 1
+        if pred == targ:
+            hit += 1
+        if pred != [] and pred == targ:
+            tp += 1
+
+    acc = hit / len(targs)
+    p = tp / pred_p
+    r = tp / targ_p
+    f1 = 2 * p * r / (p + r) if p + r > 0 else 0.0
+    print(f'tp,{tp},pred_p,{pred_p},targ_p,{targ_p}')
+    results = {
+        'sent-correct-acc': acc * 100,
+        'sent-correct-p': p * 100,
+        'sent-correct-r': r * 100,
+        'sent-correct-f1': f1 * 100,
+    }
+    return results
+
+
+def character_metric_detect(preds, targs):
+    assert len(preds) == len(targs),f"{len(preds)},{len(targs)}"
+    tp, targ_p, pred_p, hit = 0, 0, 0, 0
+    for pred_item, targ_item in zip(preds, targs):
+        assert pred_item[0] == targ_item[0]
+        pred, targ = sorted(pred_item[1:]), sorted(targ_item[1:])
+        if targ != []:
+            targ_p += len(targ)
+        if pred != []:
+            pred_p += len(pred)
+        candidate_index = [i for i, _ in targ]
+        for index, _ in pred:
+            if index in candidate_index:
+                tp += 1
+
+    p = tp / pred_p
+    r = tp / targ_p
+    f1 = 2 * p * r / (p + r) if p + r > 0 else 0.0
+    results = {
+        'char-detect-f1': f1 * 100,
+    }
+    return results
+
+
+def character_metric_correct(preds, targs):
+    assert len(preds) == len(targs)
+    tp, targ_p, pred_p, hit = 0, 0, 0, 0
+    for pred_item, targ_item in zip(preds, targs):
+        assert pred_item[0] == targ_item[0]
+        pred, targ = sorted(pred_item[1:]), sorted(targ_item[1:])
+        if targ != []:
+            targ_p += len(targ)
+        candidate_index = [i for i, _ in targ]
+        for index, _ in pred:
+            if index in candidate_index:
+                pred_p += 1
+        candidate = [example for example in targ]
+        for exp in pred:
+            if exp in candidate:
+                tp += 1
+
+    p = tp / pred_p
+    r = tp / targ_p
+    f1 = 2 * p * r / (p + r) if p + r > 0 else 0.0
+    print(f'tp,{tp},pred_p,{pred_p},targ_p,{targ_p}')
+    results = {
+        'char-correct-f1': f1 * 100,
+    }
+    return results

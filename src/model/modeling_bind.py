@@ -9,6 +9,7 @@ from torch.optim import AdamW
 from transformers import AutoModelForCausalLM, AutoConfig
 from transformers.modeling_attn_mask_utils import _prepare_4d_attention_mask
 from transformers.modeling_outputs import BaseModelOutputWithPast
+from segmentation_models_pytorch.losses import FocalLoss
 
 from src.tokenizer.modeling_tokenizer import BINDTokenizer, SentenceTokenizer
 
@@ -18,9 +19,10 @@ class BIND(nn.Module):
         super().__init__()
         self.base_model_config = AutoConfig.from_pretrained(base_model_name)
         self.base_model_config._attn_implementation = 'eager'
-        self.base_model_config.use_cache=False
+        self.base_model_config.use_cache = False
         self.base_model_config.use_sliding_window = use_sliding_window
         self.base_model_config.sliding_window = sliding_window
+
         base_model = AutoModelForCausalLM.from_pretrained(base_model_name, config=self.base_model_config)
         if use_bntd:
             base_model.model.sliding_window = sliding_window
@@ -34,41 +36,71 @@ class BIND(nn.Module):
                 raise ValueError('full attn model not found.')
         self.model = base_model
 
+        # ---- Detect Head 추가 ----
+        hidden_size = self.model.config.hidden_size
+        self.detect_head = nn.Linear(hidden_size, 2)  # binary detection
+
     def set_tokenizer(self, bind_tokenizer: BINDTokenizer):
         self.tokenizer = bind_tokenizer
-        
+
     def forward(self, sentence_noisy, sentence=None, pred=False):
         output_ids = None
         input_ids, attention_mask, token_type_ids = self.tokenizer.batch_encode_char(sentence_noisy)
+
         if sentence is not None:
             output_ids, *_ = self.tokenizer.batch_encode_char(sentence)
-            output_ids[token_type_ids==0] = -100   # loss 계산시 무시하도록 -100으로 설정
+            correct_ids = output_ids.clone().to('cuda')
+            correct_ids[token_type_ids == 0] = -100
+
+            # 0이면 동일, 1이면 다름
+            detect_ids = ((input_ids != output_ids) * 1).type_as(output_ids).to('cuda')
+            detect_ids[token_type_ids == 0] = -100  # loss ignore index를 위해 masking
 
         input_ids = input_ids.to('cuda')
         attention_mask = attention_mask.to('cuda')
 
-        logits = self.model(
+        outputs = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
-        ).logits
+            output_hidden_states=True,
+        )
 
-        loss = None
-        if output_ids is not None:
-            output_ids = output_ids.to('cuda')
-            loss = nn.CrossEntropyLoss(reduction='mean')(
+        logits = outputs.logits
+        hidden_states = outputs.hidden_states[-1]  # 마지막 layer hidden state [B, L, H]
+
+        # -------- Correct Loss (LM) --------
+        correct_loss = None
+        if sentence is not None:
+            correct_loss = nn.CrossEntropyLoss(reduction='mean')(
                 logits[:, :-1, :].reshape(-1, self.model.config.vocab_size),
-                output_ids[:,1:].reshape(-1),
+                correct_ids[:, 1:].reshape(-1),
             )
 
-        pred_ids = []
-        sentence_denoised = []
+        # -------- Detect Loss (BCE) --------
+        detect_loss = None
+        if sentence is not None:
+            detect_logits = self.detect_head(hidden_states)             # [B, L, 2]
+            # detect_loss = FocalLoss('multiclass', ignore_index=-100)(
+            detect_loss = nn.CrossEntropyLoss()(
+                detect_logits[:, :-1, :].reshape(-1, 2),
+                detect_ids[:, 1:].reshape(-1)
+            )
+
+        loss = correct_loss# + detect_loss
+
+        # -------- Prediction --------
+        pred_ids, sentence_denoised = [], []
         if pred:
             for idx in range(input_ids.shape[0]):
                 input_ids_row = input_ids[idx].detach().cpu().tolist()[1:-1]
                 pred_ids_row = logits[idx][:-2].argmax(-1).detach().cpu().tolist()
                 token_type_ids_row = token_type_ids[idx].detach().cpu().tolist()[1:-1]
+
                 pred_ids.append(pred_ids_row)
-                sentence_denoised.append(self.tokenizer.decode_char(pred_ids_row, token_type_ids_row, input_ids_row, False))
+                sentence_denoised.append(
+                    self.tokenizer.decode_char(pred_ids_row, token_type_ids_row, input_ids_row, False)
+                )
+
         return loss, logits, pred_ids, sentence_denoised
 
 def gemma3_forward(
@@ -214,6 +246,7 @@ def qwen3_forward(
     return BaseModelOutputWithPast(
         last_hidden_state=hidden_states,
         past_key_values=past_key_values if use_cache else None,
+        hidden_states=[hidden_states]
     )
 
 

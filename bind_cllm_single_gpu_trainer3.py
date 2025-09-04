@@ -10,15 +10,14 @@ import lightning as L
 
 from lightning.pytorch.callbacks import ModelCheckpoint
 
-# from src.model.modeling_bindc import LitBINDC
 from src.model.modeling_bind import LitBIND
 from src.data.dataset import get_train_dataloader, get_dev_dataloader, get_test_dataloader
 
 SEED=42
-DATASET_NAME = 'jwengr/C-LLM'
-MINI_BATCH_SIZE=8
-N_BATCH = 4
-BASE_MODEL_NAME='Qwen/Qwen3-1.7B-Base'
+DATASET_NAME = 'jwengr/sighan'
+MINI_BATCH_SIZE=16
+N_BATCH = 2
+BASE_MODEL_NAME='Qwen/Qwen3-0.6B-Base'
 EPOCHS=10
 LEARNING_RATE = 1e-4
 USE_BNTD=True
@@ -31,7 +30,7 @@ INFERENCE_SENTENCE_N_OVERLAP=3
 L.seed_everything(SEED)
 
 train_dl = get_train_dataloader(DATASET_NAME, batch_size=MINI_BATCH_SIZE, max_length=TRAIN_MAX_LENGTH)
-dev_dl = get_dev_dataloader(DATASET_NAME, batch_size=MINI_BATCH_SIZE, max_length=VALID_MAX_LENGTH)
+dev_dl = get_test_dataloader(DATASET_NAME, batch_size=MINI_BATCH_SIZE)
 test_dl = get_test_dataloader(DATASET_NAME, batch_size=MINI_BATCH_SIZE)
 
 lit_bind = LitBIND(

@@ -545,68 +545,26 @@ class BINDTokenizer:
             torch.LongTensor(attention_mask),
             torch.LongTensor(token_type_ids)
         )
-
-    # def encode_char(self, sentence, add_bos_eos_token=True):
-    #     encoded_ids = []
-    #     for char in sentence:
-    #         encoded_id = self.base_tokenizer.encode(char, add_special_tokens=False)
-    #         encoded_id = encoded_id + (4-len(encoded_id)) * [self.pad_token_id]
-    #         encoded_ids.extend(encoded_id)
-    #     if add_bos_eos_token:
-    #         encoded_ids = [self.base_tokenizer.bos_token_id] + encoded_ids + [self.base_tokenizer.eos_token_id]
-    #     return encoded_ids
-
-    # def decode_char(self, encoded_ids, contain_bos_eos_token=True):
-    #     if contain_bos_eos_token:
-    #         encoded_ids = encoded_ids[1:-1]
-
-    #     encoded_ids = deque(encoded_ids)
-    #     decoded = []
-    #     past_ids = []
-    #     while len(encoded_ids):
-    #         encoded_id = encoded_ids.popleft()
-
-    #         decoded.append(self.base_tokenizer.decode(past_ids))
-    #         past_ids = []
-    #         id1 = encoded_id
-    #         id2 = encoded_ids.popleft()
-    #         id3 = encoded_ids.popleft()
-    #         id4 = encoded_ids.popleft()
-    #         char = self.base_tokenizer.decode([id1, id2, id3, id4])[:1]
-    #         decoded.append(char)
-    #     decoded.append(self.base_tokenizer.decode(past_ids))
-    #     return ''.join(decoded)
-
-    # def batch_encode_char(self, sentences):
-    #     input_ids = []
-    #     attention_mask = []
-    #     for sentence in sentences:
-    #         input_ids_row = self.encode_char(sentence)
-    #         input_ids.append(input_ids_row)
-    #     max_length = max(list(map(len, input_ids)))
-    #     for i in range(len(sentences)):
-    #         input_ids[i] = input_ids[i] + (max_length-len(input_ids[i])) * [self.base_tokenizer.eos_token_id]
-    #         attention_mask.append([1 if input_id!=self.base_tokenizer.eos_token_id else 0 for input_id in input_ids[i]])
-    #     return (
-    #         torch.LongTensor(input_ids),
-    #         torch.LongTensor(attention_mask),
-    #     )
-
     
 class CharEncoderTokenizer:
     def __init__(self, base_tokenizer_name, space_token, unk_token, pad_token):
         self.base_tokenizer_name = base_tokenizer_name
         self.base_tokenizer = AutoTokenizer.from_pretrained(self.base_tokenizer_name)
         self.space_token = space_token
+        self.space_token_id = self.base_tokenizer.encode(space_token, add_special_tokens=False)[0]
         self.unk_token = unk_token
+        self.unk_token_id = self.base_tokenizer.encode(unk_token, add_special_tokens=False)[0]
         self.pad_token = pad_token
-        self.space_token_id = self.base_tokenizer.encode(space_token, add_special_tokens=False)
+        self.pad_token_id = self.base_tokenizer.encode(pad_token, add_special_tokens=False)[0]
+        
 
     def encode_char(self, sentence):
         sentence = sentence.replace(' ', self.space_token)
         encoded_ids = []
         for char in sentence:
             encoded_id = self.base_tokenizer.encode(char, add_special_tokens=False)
+            if not encoded_id:
+                encoded_id = [self.unk_token_id]
             encoded_ids.extend(encoded_id)
         return encoded_ids
     
@@ -620,6 +578,7 @@ class CharEncoderTokenizer:
             if (not char) or char==self.unk_token or char==self.pad_token:
                 char = sentence[idx]
             decoded.append(char)
+            idx+=1
         decoded = ''.join(decoded).replace(self.space_token, ' ')
         if len(sentence)!=len(decoded):
             print(sentence)
