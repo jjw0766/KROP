@@ -24,15 +24,15 @@ class CharEncoder(nn.Module):
 
     def forward(self, sentence_noisy, sentence=None, pred=False):
         output_ids = None
-        input_ids, attention_mask, token_type_ids = self.tokenizer.batch_encode_char(sentence_noisy)
+        input_ids, attention_mask, token_type_ids = self.tokenizer.batch_encode_char(sentence_noisy, self.tokenizer.input_chars_dict)
         if sentence is not None:
-            output_ids, *_ = self.tokenizer.batch_encode_char(sentence)
+            output_ids, output_attention_mask, output_token_type_ids = self.tokenizer.batch_encode_char(sentence, self.tokenizer.target_chars_dict)
 
             correct_ids = output_ids.clone().to('cuda')
-            correct_ids[token_type_ids == 0] = -100
+            correct_ids[output_token_type_ids == 0] = -100
 
             detect_ids = ((input_ids != output_ids) * 1).type_as(output_ids).to('cuda')
-            detect_ids[token_type_ids == 0] = -100  # loss ignore index를 위해 masking
+            detect_ids[output_token_type_ids == 0] = -100  # loss ignore index를 위해 masking
 
         input_ids = input_ids.to('cuda')
         attention_mask = attention_mask.to('cuda')
@@ -87,6 +87,7 @@ class LitCharEncoder(L.LightningModule):
         inference_sentence_min_length=32,
         inference_sentence_max_length=64,
         inference_sentence_n_overlap=3,
+        input_chars=[],
         target_chars=[]
     ):
         super().__init__()
@@ -98,7 +99,7 @@ class LitCharEncoder(L.LightningModule):
         self.inference_sentence_n_overlap = inference_sentence_n_overlap
 
         self.encoder = CharEncoder(base_model_name=base_model_name)
-        encoder_tokenizer = CharEncoderTokenizer(base_tokenizer_name=base_model_name, space_token=space_token, unk_token=unk_token, pad_token=pad_token, target_chars=target_chars)
+        encoder_tokenizer = CharEncoderTokenizer(base_tokenizer_name=base_model_name, space_token=space_token, unk_token=unk_token, pad_token=pad_token, input_chars=input_chars, target_chars=target_chars)
         self.encoder.set_tokenizer(encoder_tokenizer)
         self.sentence_tokenizer = SentenceTokenizer(
             min_length=inference_sentence_min_length,

@@ -59,3 +59,5 @@ checkpoint/
 data/
 
 results/
+
+predictions.csv

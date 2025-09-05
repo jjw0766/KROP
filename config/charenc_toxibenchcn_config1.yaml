@@ -1,16 +1,20 @@
 seed: 42
-cuda_visible_devices: "0"
+cuda_visible_devices: "2"
 
 # Dataset & Model
-dataset_name: jwengr/DACON-Korean-Review-Obfuscation
-base_model_name: Qwen/Qwen3-0.6B-Base
-n_tokens_per_char: 4
-input_chars: "hangul_syllables"
-target_chars: "hangul_syllables"
+dataset_name: jwengr/ToxiBenchCN
+base_model_name: google-bert/bert-base-chinese
+input_chars: ""
+target_chars: ""
+
+# Special Token
+space_token: '[SEP]'
+unk_token: '[UNK]'
+pad_token: '[PAD]'
 
 # Training Hyperparameters
-mini_batch_size: 4
-n_batch: 8
+mini_batch_size: 32
+n_batch: 1
 epochs: 10
 learning_rate: 0.0001
 use_bntd: true

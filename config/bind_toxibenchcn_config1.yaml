@@ -6,7 +6,7 @@ dataset_name: jwengr/ToxiBenchCN
 base_model_name: Qwen/Qwen3-0.6B-Base
 n_tokens_per_char: 4
 input_chars: ""
-target_chars: "hanzi"
+target_chars: ""
 
 # Training Hyperparameters
 mini_batch_size: 16

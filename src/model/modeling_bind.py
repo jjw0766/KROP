@@ -49,17 +49,11 @@ class BIND(nn.Module):
 
         if sentence is not None:
             output_ids, output_attention_mask, output_token_type_ids = self.tokenizer.batch_encode_char(sentence, self.tokenizer.target_chars_dict)
+            
             correct_ids = output_ids.clone().to('cuda')
             correct_ids[output_token_type_ids == 0] = -100
 
             # 0이면 동일, 1이면 다름
-            try:
-                ((input_ids != output_ids) * 1)
-            except:
-                print(sentence_noisy)
-                print(input_ids.shape)
-                print(sentence)
-                print(output_ids.shape)
             detect_ids = ((input_ids != output_ids) * 1).type_as(output_ids).to('cuda')
             detect_ids[output_token_type_ids == 0] = -100  # loss ignore index를 위해 masking
 
