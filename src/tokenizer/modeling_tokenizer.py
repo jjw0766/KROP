@@ -2,7 +2,7 @@ import re
 import torch
 
 from collections import deque, Counter
-from grapheme import graphemes
+from grapheme import graphemes, slice
 from jamotools import split_syllables, join_jamos
 from transformers import AutoTokenizer, Qwen2Tokenizer
 
@@ -473,6 +473,23 @@ class BINDTokenizer:
             self.target_chars = sum(self.target_chars, [])
             print('Using hanzi chars as target chars.')
 
+        if input_chars == 'hangul_syllables':
+            self.input_chars = list(range(0xAC00, 0xD7A4))  # 가~힣
+            print('Using hangul syllables (가~힣) as input chars.')
+
+        if target_chars == 'hangul_syllables':
+            self.target_chars = list(range(0xAC00, 0xD7A4))  # 가~힣
+            print('Using hangul syllables (가~힣) as target chars.')
+
+        if input_chars == 'eng':
+            self.input_chars = list(range(ord('A'), ord('Z') + 1)) + list(range(ord('a'), ord('z') + 1))
+            print('Using English alphabets (A–Z, a–z) as input chars.')
+
+        if target_chars == 'eng':
+            self.target_chars = list(range(ord('A'), ord('Z') + 1)) + list(range(ord('a'), ord('z') + 1))
+            print('Using English alphabets (A–Z, a–z) as target chars.')
+
+
         self.base_tokenizer = AutoTokenizer.from_pretrained(self.base_tokenizer_name)
         self.base_tokenizer.bos_token_id = self.base_tokenizer.encode('<|im_start|>', add_special_tokens=False)[-1]
         self.base_tokenizer.bos_token = '<|im_start|>'
@@ -499,7 +516,7 @@ class BINDTokenizer:
             encoded_id = encoded_id[:self.n_tokens_per_char]
             encoded_ids.extend(encoded_id)
             if chars_dict:
-                if chars_dict.get(ord(char)):
+                if len(char)==1 and chars_dict.get(ord(char)):
                     token_type_ids.extend([1] * self.n_tokens_per_char)
                 else:
                     token_type_ids.extend([0] * self.n_tokens_per_char)
@@ -531,7 +548,7 @@ class BINDTokenizer:
                 if token_type_id==0:
                     encoded_id = source_id
                 ids.append(encoded_id)
-            char = self.base_tokenizer.decode(ids)[:1]
+            char = slice(self.base_tokenizer.decode(ids), 0, 1)
             decoded.append(char)
         return ''.join(decoded)
 
