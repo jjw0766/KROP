@@ -45,16 +45,23 @@ class BIND(nn.Module):
 
     def forward(self, sentence_noisy, sentence=None, pred=False):
         output_ids = None
-        input_ids, attention_mask, token_type_ids = self.tokenizer.batch_encode_char(sentence_noisy)
+        input_ids, attention_mask, token_type_ids = self.tokenizer.batch_encode_char(sentence_noisy, self.tokenizer.input_chars_dict)
 
         if sentence is not None:
-            output_ids, *_ = self.tokenizer.batch_encode_char(sentence)
+            output_ids, output_attention_mask, output_token_type_ids = self.tokenizer.batch_encode_char(sentence, self.tokenizer.target_chars_dict)
             correct_ids = output_ids.clone().to('cuda')
-            correct_ids[token_type_ids == 0] = -100
+            correct_ids[output_token_type_ids == 0] = -100
 
             # 0이면 동일, 1이면 다름
+            try:
+                ((input_ids != output_ids) * 1)
+            except:
+                print(sentence_noisy)
+                print(input_ids.shape)
+                print(sentence)
+                print(output_ids.shape)
             detect_ids = ((input_ids != output_ids) * 1).type_as(output_ids).to('cuda')
-            detect_ids[token_type_ids == 0] = -100  # loss ignore index를 위해 masking
+            detect_ids[output_token_type_ids == 0] = -100  # loss ignore index를 위해 masking
 
         input_ids = input_ids.to('cuda')
         attention_mask = attention_mask.to('cuda')
@@ -259,6 +266,8 @@ class LitBIND(L.LightningModule):
         inference_sentence_min_length=32,
         inference_sentence_max_length=64,
         inference_sentence_n_overlap=3,
+        n_tokens_per_char=4,
+        input_chars='',
         target_chars=''
     ):
         super().__init__()
@@ -278,7 +287,7 @@ class LitBIND(L.LightningModule):
             sliding_window=sliding_window,
             use_bntd=use_bntd
         )
-        bind_tokenizer = BINDTokenizer(base_tokenizer_name=base_model_name, target_chars=target_chars)
+        bind_tokenizer = BINDTokenizer(base_tokenizer_name=base_model_name, n_tokens_per_char=n_tokens_per_char, input_chars=input_chars, target_chars=target_chars)
         self.bind.set_tokenizer(bind_tokenizer)
         self.sentence_tokenizer = SentenceTokenizer(
             min_length=inference_sentence_min_length,
