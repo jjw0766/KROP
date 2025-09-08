@@ -12,10 +12,11 @@ from transformers.modeling_outputs import BaseModelOutputWithPast
 from segmentation_models_pytorch.losses import FocalLoss
 
 from src.tokenizer.modeling_tokenizer import BINDTokenizer, SentenceTokenizer
+from src.model.utils import apply_neftune
 
 
 class BIND(nn.Module):
-    def __init__(self, base_model_name='Qwen/Qwen3-0.6B', use_sliding_window=True, sliding_window=12, use_bntd=True):
+    def __init__(self, base_model_name='Qwen/Qwen3-0.6B', use_sliding_window=True, sliding_window=12, use_bntd=True, neftune_alpha=0):
         super().__init__()
         self.base_model_config = AutoConfig.from_pretrained(base_model_name)
         self.base_model_config._attn_implementation = 'eager'
@@ -24,6 +25,7 @@ class BIND(nn.Module):
         self.base_model_config.sliding_window = sliding_window
 
         base_model = AutoModelForCausalLM.from_pretrained(base_model_name, config=self.base_model_config)
+        base_model.train()
         if use_bntd:
             base_model.model.sliding_window = sliding_window
             if 'qwen3' in base_model_name.lower():
@@ -34,11 +36,15 @@ class BIND(nn.Module):
                 print('use full attn gemma3')
             else:
                 raise ValueError('full attn model not found.')
+        if neftune_alpha:
+            base_model = apply_neftune(base_model, neftune_alpha)   
+            print('neftune applied')     
         self.model = base_model
 
         # ---- Detect Head 추가 ----
         hidden_size = self.model.config.hidden_size
         self.detect_head = nn.Linear(hidden_size, 2)  # binary detection
+
 
     def set_tokenizer(self, bind_tokenizer: BINDTokenizer):
         self.tokenizer = bind_tokenizer
@@ -70,9 +76,14 @@ class BIND(nn.Module):
         hidden_states = outputs.hidden_states[-1]  # 마지막 layer hidden state [B, L, H]
 
         loss = None
-        correct_loss = None
-        detect_loss = None
         if sentence is not None:
+            # only correct_loss
+            # correct_loss = nn.CrossEntropyLoss(reduction='mean')(
+            #     logits[:, :-1, :].reshape(-1, self.model.config.vocab_size),
+            #     correct_ids[:, 1:].reshape(-1),
+            # )
+            # loss = correct_loss
+
             correct_loss = nn.CrossEntropyLoss(reduction='mean')(
                 logits[:, :-1, :].reshape(-1, self.model.config.vocab_size),
                 correct_ids[:, 1:].reshape(-1),
@@ -85,6 +96,9 @@ class BIND(nn.Module):
             )
         
             loss = correct_loss + detect_loss
+            
+
+
 
         # -------- Prediction --------
         pred_ids, sentence_denoised = [], []
@@ -262,7 +276,8 @@ class LitBIND(L.LightningModule):
         inference_sentence_n_overlap=3,
         n_tokens_per_char=4,
         input_chars='',
-        target_chars=''
+        target_chars='',
+        neftune_alpha=0
     ):
         super().__init__()
         self.base_model_name = base_model_name
@@ -279,7 +294,8 @@ class LitBIND(L.LightningModule):
             base_model_name=base_model_name,
             use_sliding_window=use_sliding_window,
             sliding_window=sliding_window,
-            use_bntd=use_bntd
+            use_bntd=use_bntd,
+            neftune_alpha=neftune_alpha
         )
         bind_tokenizer = BINDTokenizer(base_tokenizer_name=base_model_name, n_tokens_per_char=n_tokens_per_char, input_chars=input_chars, target_chars=target_chars)
         self.bind.set_tokenizer(bind_tokenizer)

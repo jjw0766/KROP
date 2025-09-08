@@ -4,6 +4,7 @@ cuda_visible_devices: "2"
 # Dataset & Model
 dataset_name: jwengr/PeOcrSanskritPreproc
 base_model_name: google-bert/bert-base-multilingual-cased
+n_tokens_per_char: 3
 input_chars: ""
 target_chars: ""
 

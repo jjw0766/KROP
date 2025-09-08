@@ -7,7 +7,7 @@ import lightning as L
 import pandas as pd
 from tqdm.auto import tqdm
 
-from src.model.modeling_char_encoder import LitCharEncoder
+from src.model.modeling_instruction_tuning import LitInstructionModel
 from src.data.dataset import get_test_dataloader
 
 
@@ -32,24 +32,20 @@ def main(args):
     )
 
     # Load checkpoint
-    lit_char_encoder = LitCharEncoder.load_from_checkpoint(
+    lit_inst_model = LitInstructionModel.load_from_checkpoint(
         args.checkpoint,
         base_model_name=config["base_model_name"],
-        space_token=config["space_token"],
-        unk_token=config["unk_token"],
-        pad_token=config["pad_token"],
-        lr=float(config["learning_rate"]),
+        use_qlora=config["use_qlora"],
+        lr=config["learning_rate"],
         epochs=config["epochs"],
-        inference_sentence_max_length=config["inference_sentence_max_length"],
-        inference_sentence_min_length=config["inference_sentence_min_length"],
-        inference_sentence_n_overlap=config["inference_sentence_n_overlap"],
-        input_chars=config.get("input_chars", ""),
-        target_chars=config.get("target_chars", "")
+        lora_r=config["lora_r"],
+        lora_alpha=config["lora_alpha"],
+        strict=False
     )
 
     # Trainer for inference
     trainer = L.Trainer()
-    preds = trainer.predict(lit_char_encoder, test_dl)
+    preds = trainer.predict(lit_inst_model, test_dl)
 
     # Collect predictions
     prediction = []
@@ -78,7 +74,7 @@ def main(args):
     base_name = os.path.basename(args.checkpoint)
     save_name = os.path.splitext(base_name)[0] + ".csv"
     os.makedirs('results', exist_ok=True)
-    result_df.to_csv(f"results/charenc_{save_name}", index=False)
+    result_df.to_csv(f"results/inst_{save_name}", index=False)
 
 
 def setup_parser():

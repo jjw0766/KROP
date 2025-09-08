@@ -48,8 +48,6 @@ class CharEncoder(nn.Module):
         hidden_states = outputs.hidden_states[-1]
 
         loss = None
-        correct_loss = None
-        detect_loss = None
         if sentence is not None:
             correct_loss = nn.CrossEntropyLoss(reduction='mean')(
                 logits.reshape(-1, self.model.config.vocab_size),
@@ -87,6 +85,7 @@ class LitCharEncoder(L.LightningModule):
         inference_sentence_min_length=32,
         inference_sentence_max_length=64,
         inference_sentence_n_overlap=3,
+        n_tokens_per_char=1,
         input_chars=[],
         target_chars=[]
     ):
@@ -99,7 +98,7 @@ class LitCharEncoder(L.LightningModule):
         self.inference_sentence_n_overlap = inference_sentence_n_overlap
 
         self.encoder = CharEncoder(base_model_name=base_model_name)
-        encoder_tokenizer = CharEncoderTokenizer(base_tokenizer_name=base_model_name, space_token=space_token, unk_token=unk_token, pad_token=pad_token, input_chars=input_chars, target_chars=target_chars)
+        encoder_tokenizer = CharEncoderTokenizer(base_tokenizer_name=base_model_name, space_token=space_token, unk_token=unk_token, pad_token=pad_token, n_tokens_per_char=n_tokens_per_char, input_chars=input_chars, target_chars=target_chars)
         self.encoder.set_tokenizer(encoder_tokenizer)
         self.sentence_tokenizer = SentenceTokenizer(
             min_length=inference_sentence_min_length,

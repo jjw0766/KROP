@@ -9,7 +9,6 @@ from tqdm.auto import tqdm
 
 from src.model.modeling_bind import LitBIND
 from src.data.dataset import get_test_dataloader
-from src.metrics.metric import calculate_metric
 
 
 def load_config(config_path: str):
@@ -62,7 +61,7 @@ def main(args):
         true.extend(batch["sentence"])
         inputs.extend(batch["sentence_noisy"])
         if batch.get("category") is None:
-            category = "none"
+            category = ["none"]*len(batch["sentence"])
         else:
             category = batch["category"]
         categories.extend(category)
@@ -74,20 +73,12 @@ def main(args):
         "category": categories,
     })
 
-    # Calculate metrics
-    for cat in set(result_df["category"]):
-        cat_df = result_df[result_df["category"] == cat].copy()
-        result, result_list = calculate_metric(
-            cat_df["input"].tolist(),
-            cat_df["true"].tolist(),
-            cat_df["pred"].tolist()
-        )
-        print(cat, result)
 
     # Save results
-    if args.output is not None:
-        result_df.to_csv(args.output, index=False)
-        print(f"Saved predictions to {args.output}")
+    base_name = os.path.basename(args.checkpoint)
+    save_name = os.path.splitext(base_name)[0] + ".csv"
+    os.makedirs('results', exist_ok=True)
+    result_df.to_csv(f"results/bind_{save_name}", index=False)
 
 
 def setup_parser():
@@ -98,8 +89,7 @@ def setup_parser():
                         help="Path to trained checkpoint (.ckpt)")
     parser.add_argument("--cuda_visible_devices", type=str, default="0",
                         help="CUDA device(s) to make visible")
-    parser.add_argument("--output", type=str, default="predictions.csv",
-                        help="Path to save prediction results")
+
     return parser
 
 

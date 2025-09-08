@@ -4,6 +4,8 @@ import torch
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from transformers import AutoModelForCausalLM, BitsAndBytesConfig, AutoTokenizer
 
+from src.model.utils import apply_neftune
+
 class LitInstructionModel(L.LightningModule):
     def __init__(
         self,
@@ -13,7 +15,8 @@ class LitInstructionModel(L.LightningModule):
         lora_r=16,
         lora_alpha=32,
         lora_dropout=0.1,
-        epochs=10
+        epochs=10,
+        neftune_alpha=0
     ):
         super().__init__()
         self.base_model_name = base_model_name
@@ -34,6 +37,10 @@ class LitInstructionModel(L.LightningModule):
                 base_model_name, 
                 quantization_config=quantization_config
             )
+            model.train()
+            if neftune_alpha:
+                model = apply_neftune(model, neftune_alpha)   
+                print('neftune applied') 
             model = prepare_model_for_kbit_training(model)
     
             lora_config = LoraConfig(
@@ -49,13 +56,17 @@ class LitInstructionModel(L.LightningModule):
             model = AutoModelForCausalLM.from_pretrained(
                 base_model_name, 
             )
+            model.train()
+            if neftune_alpha:
+                model = apply_neftune(model, neftune_alpha)   
+                print('neftune applied') 
         self.model = model
         
 
     def get_prompt(self, sentence_noisy, sentence, mode='train'):
         if mode=='train':
             messages = [
-                {"role": "user", "content": f"난독화된 텍스트를 해독해주세요. 텍스트 : {sentence_noisy}"},
+                {"role": "user", "content": f"Please decode the obfuscated text. Text: {sentence_noisy}"},
                 {"role": "assistant", "content": sentence}
             ]
             prompt = self.tokenizer.apply_chat_template(
@@ -66,7 +77,7 @@ class LitInstructionModel(L.LightningModule):
             )
         elif mode=='inference':
             messages = [
-                {"role": "user", "content": f"난독화된 텍스트를 해독해주세요. 텍스트 : {sentence_noisy}"},
+                {"role": "user", "content": f"Please decode the obfuscated text. Text: {sentence_noisy}"},
             ]
             prompt = self.tokenizer.apply_chat_template(
                 messages,

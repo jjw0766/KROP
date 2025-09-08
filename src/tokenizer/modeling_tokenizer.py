@@ -450,7 +450,7 @@ class BINDTokenizer:
         )
     
 class CharEncoderTokenizer:
-    def __init__(self, base_tokenizer_name, space_token, unk_token, pad_token, input_chars=[], target_chars=[]):
+    def __init__(self, base_tokenizer_name, space_token, unk_token, pad_token, n_tokens_per_char=1, input_chars=[], target_chars=[]):
         self.base_tokenizer_name = base_tokenizer_name
         self.base_tokenizer = AutoTokenizer.from_pretrained(self.base_tokenizer_name)
         self.space_token = space_token
@@ -459,6 +459,7 @@ class CharEncoderTokenizer:
         self.unk_token_id = self.base_tokenizer.encode(unk_token, add_special_tokens=False)[0]
         self.pad_token = pad_token
         self.pad_token_id = self.base_tokenizer.encode(pad_token, add_special_tokens=False)[0]
+        self.n_tokens_per_char = n_tokens_per_char
         self.input_chars = input_chars
         self.target_chars = target_chars
 
@@ -520,14 +521,13 @@ class CharEncoderTokenizer:
                 char = self.space_token
             if chars_dict:
                 if len(char)==1 and chars_dict.get(ord(char)):
-                    token_type_ids.extend([1])
+                    token_type_ids.extend([1] * self.n_tokens_per_char)
                 else:
-                    token_type_ids.extend([0])
+                    token_type_ids.extend([0] * self.n_tokens_per_char)
             else:
-                token_type_ids.extend([1])
-            encoded_id = self.base_tokenizer.encode(char, add_special_tokens=False)[:1]
-            if not encoded_id:
-                encoded_id = [self.unk_token_id]
+                token_type_ids.extend([1] * self.n_tokens_per_char)
+            encoded_id = self.base_tokenizer.encode(char, add_special_tokens=False)[:self.n_tokens_per_char]
+            encoded_id = encoded_id + [self.unk_token_id] * (self.n_tokens_per_char - len(encoded_id))
             encoded_ids.extend(encoded_id)
         return encoded_ids, token_type_ids
     
@@ -538,9 +538,12 @@ class CharEncoderTokenizer:
         decoded = []
         idx = 0
         while len(encoded_ids):
-            encoded_id = encoded_ids.popleft()
-            token_type_id = token_type_ids.popleft()
-            char = self.base_tokenizer.decode([encoded_id], skip_special_tokens=True)
+            ids = []
+            for i in range(self.n_tokens_per_char):
+                encoded_id = encoded_ids.popleft()
+                token_type_id = token_type_ids.popleft()
+                ids.append(encoded_id)
+            char = self.base_tokenizer.decode(ids)
             if (not char) or char==self.unk_token or char==self.pad_token or token_type_id==0:
                 char = sentence_chars[idx]
             else:

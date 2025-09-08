@@ -45,16 +45,17 @@ def main(args):
         inference_sentence_n_overlap=args.inference_sentence_n_overlap,
         n_tokens_per_char=args.n_tokens_per_char,
         input_chars=args.input_chars,
-        target_chars=args.target_chars
+        target_chars=args.target_chars,
+        neftune_alpha=args.neftune_alpha
     )
 
     checkpoint_callback = ModelCheckpoint(
         dirpath='checkpoints/bind',
-        filename=f"{args.dataset_name.split('/')[-1]}-{args.base_model_name.split('/')[-1]}" + "-{epoch:02d}-{valid_loss:.4f}",
+        filename=f"{args.dataset_name.split('/')[-1]}-{args.base_model_name.split('/')[-1]}-{args.prefix}" + "-{epoch:02d}-{valid_loss:.4f}",
         monitor='valid_loss',
         mode='min',
         save_weights_only=True,
-        save_top_k=3,
+        save_top_k=1,
     )
 
     trainer = L.Trainer(
@@ -90,6 +91,7 @@ def setup_parser():
     parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs.')
     parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning rate for the optimizer.')
     parser.add_argument('--use_bntd', type=bool, default=True, help='Whether to use BNTD in the model.')
+    parser.add_argument('--neftune_alpha', type=float, default=0, help='Whether to use neftune in the model.')
 
     # Text processing arguments
     parser.add_argument('--train_max_length', type=int, default=128, help='Max sequence length for training.')
@@ -97,6 +99,8 @@ def setup_parser():
     parser.add_argument('--inference_sentence_max_length', type=int, default=64, help='Max sentence length for inference.')
     parser.add_argument('--inference_sentence_min_length', type=int, default=32, help='Min sentence length for inference.')
     parser.add_argument('--inference_sentence_n_overlap', type=int, default=3, help='Number of sentences to overlap during inference.')
+
+    parser.add_argument('--prefix', type=str, default='')
 
     return parser
 
