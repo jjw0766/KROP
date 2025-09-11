@@ -449,6 +449,25 @@ class BINDTokenizer:
             torch.LongTensor(token_type_ids)
         )
     
+    def get_detect_label(self, sentence, sentence_noisy):
+        detect_label = []
+        for char, char_noisy in zip(graphemes(sentence), graphemes(sentence_noisy)):
+            if char!=char_noisy:
+                detect_label.append(1)
+            else:
+                detect_label.append(0)
+        return detect_label
+    
+    def get_batch_detect_label(self, sentences, sentences_noisy):
+        detect_labels = []
+        for sentence, sentence_noisy in zip(sentences, sentences_noisy):
+            detect_labels.append(self.get_detect_label(sentence, sentence_noisy))
+        max_length = max(list(map(len, detect_labels)))
+        for i in range(len(detect_labels)):
+            detect_labels[i] = detect_labels[i] + (max_length-len(detect_labels[i])) * [-100]
+        return torch.LongTensor(detect_labels)
+
+    
 class CharEncoderTokenizer:
     def __init__(self, base_tokenizer_name, space_token, unk_token, pad_token, n_tokens_per_char=1, input_chars=[], target_chars=[]):
         self.base_tokenizer_name = base_tokenizer_name

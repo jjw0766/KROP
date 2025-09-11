@@ -10,19 +10,21 @@ from transformers import AutoModelForCausalLM, AutoConfig
 from transformers.modeling_attn_mask_utils import _prepare_4d_attention_mask
 from transformers.modeling_outputs import BaseModelOutputWithPast
 from segmentation_models_pytorch.losses import FocalLoss
+from grapheme import graphemes
 
 from src.tokenizer.modeling_tokenizer import BINDTokenizer, SentenceTokenizer
 from src.model.utils import apply_neftune
 
 
 class BIND(nn.Module):
-    def __init__(self, base_model_name='Qwen/Qwen3-0.6B', use_sliding_window=True, sliding_window=12, use_bntd=True, neftune_alpha=0):
+    def __init__(self, base_model_name='Qwen/Qwen3-0.6B', use_sliding_window=True, sliding_window=12, use_bntd=True, neftune_alpha=0, n_tokens_per_char=4):
         super().__init__()
         self.base_model_config = AutoConfig.from_pretrained(base_model_name)
-        self.base_model_config._attn_implementation = 'eager'
-        self.base_model_config.use_cache = False
-        self.base_model_config.use_sliding_window = use_sliding_window
-        self.base_model_config.sliding_window = sliding_window
+        if use_bntd:
+            self.base_model_config._attn_implementation = 'eager'
+            self.base_model_config.use_cache = False
+            self.base_model_config.use_sliding_window = use_sliding_window
+            self.base_model_config.sliding_window = sliding_window
 
         base_model = AutoModelForCausalLM.from_pretrained(base_model_name, config=self.base_model_config)
         base_model.train()
@@ -43,11 +45,72 @@ class BIND(nn.Module):
 
         # ---- Detect Head 추가 ----
         hidden_size = self.model.config.hidden_size
+        self.detect_window = nn.Conv1d(hidden_size, hidden_size, kernel_size=n_tokens_per_char, stride=n_tokens_per_char)
         self.detect_head = nn.Linear(hidden_size, 2)  # binary detection
+        
 
 
     def set_tokenizer(self, bind_tokenizer: BINDTokenizer):
         self.tokenizer = bind_tokenizer
+
+    # def forward(self, sentence_noisy, sentence=None, pred=False):
+    #     output_ids = None
+    #     input_ids, attention_mask, token_type_ids = self.tokenizer.batch_encode_char(sentence_noisy, self.tokenizer.input_chars_dict)
+
+    #     if sentence is not None:
+    #         output_ids, output_attention_mask, output_token_type_ids = self.tokenizer.batch_encode_char(sentence, self.tokenizer.target_chars_dict)
+            
+    #         correct_ids = output_ids.clone().to('cuda')
+    #         correct_ids[output_token_type_ids == 0] = -100
+
+    #         # 0이면 동일, 1이면 다름
+    #         detect_ids = ((input_ids != output_ids) * 1).type_as(output_ids).to('cuda')
+    #         detect_ids[output_token_type_ids == 0] = -100  # loss ignore index를 위해 masking
+
+    #     input_ids = input_ids.to('cuda')
+    #     attention_mask = attention_mask.to('cuda')
+
+    #     outputs = self.model(
+    #         input_ids=input_ids,
+    #         attention_mask=attention_mask,
+    #         output_hidden_states=True,
+    #     )
+
+    #     logits = outputs.logits
+    #     hidden_states = outputs.hidden_states[-1]  # 마지막 layer hidden state [B, L, H]
+
+    #     loss = None
+    #     if sentence is not None:
+    #         correct_loss = nn.CrossEntropyLoss(reduction='mean')(
+    #             logits[:, :-1, :].reshape(-1, self.model.config.vocab_size),
+    #             correct_ids[:, 1:].reshape(-1),
+    #         )
+
+    #         detect_logits = self.detect_head(hidden_states)             # [B, L, 2]
+    #         detect_loss = FocalLoss('multiclass', ignore_index=-100)(
+    #             detect_logits[:, :-1, :].reshape(-1, 2),
+    #             detect_ids[:, 1:].reshape(-1)
+    #         )
+        
+    #         loss = correct_loss + detect_loss
+            
+
+
+
+    #     # -------- Prediction --------
+    #     pred_ids, sentence_denoised = [], []
+    #     if pred:
+    #         for idx in range(input_ids.shape[0]):
+    #             input_ids_row = input_ids[idx].detach().cpu().tolist()[1:-1]
+    #             pred_ids_row = logits[idx][:-2].argmax(-1).detach().cpu().tolist()
+    #             token_type_ids_row = token_type_ids[idx].detach().cpu().tolist()[1:-1]
+
+    #             pred_ids.append(pred_ids_row)
+    #             sentence_denoised.append(
+    #                 self.tokenizer.decode_char(pred_ids_row, token_type_ids_row, input_ids_row, False)
+    #             )
+
+    #     return loss, logits, pred_ids, sentence_denoised
 
     def forward(self, sentence_noisy, sentence=None, pred=False):
         output_ids = None
@@ -59,9 +122,7 @@ class BIND(nn.Module):
             correct_ids = output_ids.clone().to('cuda')
             correct_ids[output_token_type_ids == 0] = -100
 
-            # 0이면 동일, 1이면 다름
-            detect_ids = ((input_ids != output_ids) * 1).type_as(output_ids).to('cuda')
-            detect_ids[output_token_type_ids == 0] = -100  # loss ignore index를 위해 masking
+            detect_labels = self.tokenizer.get_batch_detect_label(sentence, sentence_noisy).type_as(output_ids).to('cuda')
 
         input_ids = input_ids.to('cuda')
         attention_mask = attention_mask.to('cuda')
@@ -74,25 +135,21 @@ class BIND(nn.Module):
 
         logits = outputs.logits
         hidden_states = outputs.hidden_states[-1]  # 마지막 layer hidden state [B, L, H]
+        detect_logits = self.detect_window(hidden_states[:,:-2,:].transpose(1,2)).transpose(1,2)
+        detect_logits = self.detect_head(detect_logits)
+        detect_pred = detect_logits.argmax(-1).detach().cpu()
 
         loss = None
         if sentence is not None:
-            # only correct_loss
-            # correct_loss = nn.CrossEntropyLoss(reduction='mean')(
-            #     logits[:, :-1, :].reshape(-1, self.model.config.vocab_size),
-            #     correct_ids[:, 1:].reshape(-1),
-            # )
-            # loss = correct_loss
-
             correct_loss = nn.CrossEntropyLoss(reduction='mean')(
                 logits[:, :-1, :].reshape(-1, self.model.config.vocab_size),
                 correct_ids[:, 1:].reshape(-1),
             )
 
-            detect_logits = self.detect_head(hidden_states)             # [B, L, 2]
+            
             detect_loss = FocalLoss('multiclass', ignore_index=-100)(
-                detect_logits[:, :-1, :].reshape(-1, 2),
-                detect_ids[:, 1:].reshape(-1)
+                detect_logits.reshape(-1, 2),
+                detect_labels.reshape(-1)
             )
         
             loss = correct_loss + detect_loss
@@ -109,9 +166,16 @@ class BIND(nn.Module):
                 token_type_ids_row = token_type_ids[idx].detach().cpu().tolist()[1:-1]
 
                 pred_ids.append(pred_ids_row)
-                sentence_denoised.append(
-                    self.tokenizer.decode_char(pred_ids_row, token_type_ids_row, input_ids_row, False)
-                )
+                sentence_denoised_row = self.tokenizer.decode_char(pred_ids_row, token_type_ids_row, input_ids_row, False)
+                sentence_denoised_row_filtered = []
+                for char_noisy, char_pred, detected_yn in zip(graphemes(sentence_noisy[idx]), graphemes(sentence_denoised_row), detect_pred[idx]):
+                    if detected_yn==0:
+                        sentence_denoised_row_filtered.append(char_noisy)
+                    elif detected_yn==1:
+                        sentence_denoised_row_filtered.append(char_pred)
+                sentence_denoised_row_filtered = ''.join(sentence_denoised_row_filtered)
+
+                sentence_denoised.append(sentence_denoised_row_filtered)
 
         return loss, logits, pred_ids, sentence_denoised
 
@@ -295,7 +359,8 @@ class LitBIND(L.LightningModule):
             use_sliding_window=use_sliding_window,
             sliding_window=sliding_window,
             use_bntd=use_bntd,
-            neftune_alpha=neftune_alpha
+            neftune_alpha=neftune_alpha,
+            n_tokens_per_char=n_tokens_per_char
         )
         bind_tokenizer = BINDTokenizer(base_tokenizer_name=base_model_name, n_tokens_per_char=n_tokens_per_char, input_chars=input_chars, target_chars=target_chars)
         self.bind.set_tokenizer(bind_tokenizer)

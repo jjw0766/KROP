@@ -13,8 +13,8 @@ mini_batch_size: 16
 n_batch: 2
 epochs: 10
 learning_rate: 0.0001
-use_bntd: true
-neftune_alpha: 30
+use_bntd: false
+neftune_alpha: 0
 
 # Sequence Lengths
 train_max_length: 128
@@ -23,4 +23,4 @@ inference_sentence_max_length: 64
 inference_sentence_min_length: 32
 inference_sentence_n_overlap: 3
 
-prefix: "neftune=30"
+prefix: "causal"
