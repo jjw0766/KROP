@@ -38,12 +38,14 @@ def main(args):
         lr=float(config["learning_rate"]),
         epochs=config["epochs"],
         use_bntd=config["use_bntd"],
+        sliding_window=config['sliding_window'],
         inference_sentence_max_length=config["inference_sentence_max_length"],
         inference_sentence_min_length=config["inference_sentence_min_length"],
         inference_sentence_n_overlap=config["inference_sentence_n_overlap"],
         n_tokens_per_char=config.get("n_tokens_per_char",4),
         input_chars=config.get("input_chars", ""),
-        target_chars=config.get("target_chars", "")
+        target_chars=config.get("target_chars", ""),
+        strict=False
     )
 
     # Trainer for inference

@@ -1,8 +1,9 @@
 seed: 42
-cuda_visible_devices: "3"
+cuda_visible_devices: "2"
 
 # Dataset & Model
 dataset_name: jwengr/ToxiBenchCN
+pretrained_model_path: checkpoints/bind/ToxiBenchCN-mngp-Qwen3-4B-Base-detectcnn-epoch=08-valid_loss=0.6995.ckpt
 base_model_name: Qwen/Qwen3-4B-Base
 n_tokens_per_char: 4
 input_chars: ""
@@ -13,7 +14,9 @@ mini_batch_size: 2
 n_batch: 16
 epochs: 10
 learning_rate: 0.0001
-use_bntd: false
+use_bntd: true
+sliding_window: 12
+neftune_alpha: 0
 
 # Sequence Lengths
 train_max_length: 128
@@ -21,3 +24,5 @@ valid_max_length: 128
 inference_sentence_max_length: 64
 inference_sentence_min_length: 32
 inference_sentence_n_overlap: 3
+
+prefix: "detectcnn-mngp-pretrained"

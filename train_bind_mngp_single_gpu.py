@@ -7,7 +7,7 @@ import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint
 
 from src.model.modeling_bind import LitBIND
-from src.data.dataset import get_train_dataloader, get_dev_dataloader, get_test_dataloader
+from src.data.dataset import get_mngp_train_dataloader, get_mngp_dev_dataloader
 
 
 def main(args):
@@ -20,62 +20,36 @@ def main(args):
 
     L.seed_everything(args.seed)
 
-    train_dl = get_train_dataloader(
+    train_dl = get_mngp_train_dataloader(
         args.dataset_name,
         batch_size=args.mini_batch_size,
         max_length=args.train_max_length
     )
-    dev_dl = get_dev_dataloader(
+    dev_dl = get_mngp_dev_dataloader(
         args.dataset_name,
         batch_size=args.mini_batch_size,
         max_length=args.valid_max_length
     )
-    test_dl = get_test_dataloader(
-        args.dataset_name,
-        batch_size=args.mini_batch_size
+
+
+    lit_bind = LitBIND(
+        base_model_name=args.base_model_name,
+        lr=args.learning_rate,
+        epochs=args.epochs,
+        use_bntd=args.use_bntd,
+        inference_sentence_max_length=args.inference_sentence_max_length,
+        inference_sentence_min_length=args.inference_sentence_min_length,
+        inference_sentence_n_overlap=args.inference_sentence_n_overlap,
+        n_tokens_per_char=args.n_tokens_per_char,
+        sliding_window=args.sliding_window,
+        input_chars=args.input_chars,
+        target_chars=args.target_chars,
+        neftune_alpha=args.neftune_alpha
     )
-    if args.pretrained_model_path:
-        print('pretrained model loaded')
-        lit_bind = LitBIND.load_from_checkpoint(
-            args.pretrained_model_path,
-            base_model_name=args.base_model_name,
-            lr=args.learning_rate,
-            epochs=args.epochs,
-            use_bntd=args.use_bntd,
-            use_qlora=args.use_qlora,
-            lora_r=args.lora_r,
-            lora_alpha=args.lora_alpha,
-            inference_sentence_max_length=args.inference_sentence_max_length,
-            inference_sentence_min_length=args.inference_sentence_min_length,
-            inference_sentence_n_overlap=args.inference_sentence_n_overlap,
-            n_tokens_per_char=args.n_tokens_per_char,
-            sliding_window=args.sliding_window,
-            input_chars=args.input_chars,
-            target_chars=args.target_chars,
-            neftune_alpha=args.neftune_alpha
-        )
-    else:
-        lit_bind = LitBIND(
-            base_model_name=args.base_model_name,
-            lr=args.learning_rate,
-            epochs=args.epochs,
-            use_bntd=args.use_bntd,
-            use_qlora=args.use_qlora,
-            lora_r=args.lora_r,
-            lora_alpha=args.lora_alpha,
-            inference_sentence_max_length=args.inference_sentence_max_length,
-            inference_sentence_min_length=args.inference_sentence_min_length,
-            inference_sentence_n_overlap=args.inference_sentence_n_overlap,
-            n_tokens_per_char=args.n_tokens_per_char,
-            sliding_window=args.sliding_window,
-            input_chars=args.input_chars,
-            target_chars=args.target_chars,
-            neftune_alpha=args.neftune_alpha
-        )
 
     checkpoint_callback = ModelCheckpoint(
         dirpath='checkpoints/bind',
-        filename=f"{args.dataset_name.split('/')[-1]}-{args.base_model_name.split('/')[-1]}-{args.prefix}" + "-{epoch:02d}-{valid_loss:.4f}",
+        filename=f"{args.dataset_name.split('/')[-1]}-mngp-{args.base_model_name.split('/')[-1]}-{args.prefix}" + "-{epoch:02d}-{valid_loss:.4f}",
         monitor='valid_loss',
         mode='min',
         save_weights_only=True,
@@ -105,7 +79,6 @@ def setup_parser():
     # Data and model arguments
     parser.add_argument('--dataset_name', type=str, default='jwengr/C-LLM', help='Hugging Face dataset name.')
     parser.add_argument('--base_model_name', type=str, default='Qwen/Qwen3-0.6B-Base', help='Hugging Face base model name.')
-    parser.add_argument('--pretrained_model_path', type=str, default='', help='Pretrained model path')
     parser.add_argument('--n_tokens_per_char', type=int, default=4, help='n_tokens_per_char')
     parser.add_argument('--input_chars', type=str, default='', help='Target characters for the model.')
     parser.add_argument('--target_chars', type=str, default='', help='Target characters for the model.')
@@ -118,10 +91,6 @@ def setup_parser():
     parser.add_argument('--use_bntd', type=bool, default=True, help='Whether to use BNTD in the model.')
     parser.add_argument('--sliding_window', type=int, default=12, help='sliding window size')
     parser.add_argument('--neftune_alpha', type=float, default=0, help='Whether to use neftune in the model.')
-    parser.add_argument('--use_qlora', type=bool, default=False, help='Whether to use Lora in the model.')
-    parser.add_argument('--lora_r', type=int, default=16, help='Mini-batch size for training.')
-    parser.add_argument('--lora_alpha', type=int, default=32, help='Mini-batch size for training.')
-
 
     # Text processing arguments
     parser.add_argument('--train_max_length', type=int, default=128, help='Max sequence length for training.')

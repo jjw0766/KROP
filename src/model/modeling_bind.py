@@ -6,18 +6,19 @@ from types import MethodType
 from typing import List, Optional, Tuple, Union
 from copy import deepcopy
 from torch.optim import AdamW
-from transformers import AutoModelForCausalLM, AutoConfig
+from transformers import AutoModelForCausalLM, AutoConfig, BitsAndBytesConfig
 from transformers.modeling_attn_mask_utils import _prepare_4d_attention_mask
 from transformers.modeling_outputs import BaseModelOutputWithPast
 from segmentation_models_pytorch.losses import FocalLoss
 from grapheme import graphemes
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
 from src.tokenizer.modeling_tokenizer import BINDTokenizer, SentenceTokenizer
 from src.model.utils import apply_neftune
 
 
 class BIND(nn.Module):
-    def __init__(self, base_model_name='Qwen/Qwen3-0.6B', use_sliding_window=True, sliding_window=12, use_bntd=True, neftune_alpha=0, n_tokens_per_char=4):
+    def __init__(self, base_model_name='Qwen/Qwen3-0.6B', use_sliding_window=True, sliding_window=12, use_bntd=True, neftune_alpha=0, n_tokens_per_char=4, use_qlora=False, lora_r=16, lora_alpha=32, lora_dropout=0.1):
         super().__init__()
         self.base_model_config = AutoConfig.from_pretrained(base_model_name)
         if use_bntd:
@@ -26,21 +27,57 @@ class BIND(nn.Module):
             self.base_model_config.use_sliding_window = use_sliding_window
             self.base_model_config.sliding_window = sliding_window
 
-        base_model = AutoModelForCausalLM.from_pretrained(base_model_name, config=self.base_model_config)
-        base_model.train()
-        if use_bntd:
-            base_model.model.sliding_window = sliding_window
-            if 'qwen3' in base_model_name.lower():
-                base_model.model.forward = MethodType(qwen3_forward, base_model.model)
-                print('use full attn qwen3')
-            elif 'gemma-3' in base_model_name.lower():
-                base_model.model.forward = MethodType(gemma3_forward, base_model.model)
-                print('use full attn gemma3')
-            else:
-                raise ValueError('full attn model not found.')
-        if neftune_alpha:
-            base_model = apply_neftune(base_model, neftune_alpha)   
-            print('neftune applied')     
+        if use_qlora:
+            print("use_qlora")
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_compute_dtype=torch.bfloat16,
+            )
+            base_model = AutoModelForCausalLM.from_pretrained(
+                base_model_name, 
+                quantization_config=quantization_config
+            )
+            base_model.train()
+            if use_bntd:
+                base_model.model.sliding_window = sliding_window
+                if 'qwen3' in base_model_name.lower():
+                    base_model.model.forward = MethodType(qwen3_forward, base_model.model)
+                    print('use full attn qwen3')
+                elif 'gemma-3' in base_model_name.lower():
+                    base_model.model.forward = MethodType(gemma3_forward, base_model.model)
+                    print('use full attn gemma3')
+                else:
+                    raise ValueError('full attn model not found.')
+            if neftune_alpha:
+                base_model = apply_neftune(base_model, neftune_alpha)   
+                print('neftune applied')  
+            base_model = prepare_model_for_kbit_training(base_model)
+            
+            lora_config = LoraConfig(
+                r=lora_r,
+                lora_alpha=lora_alpha,
+                lora_dropout=lora_dropout,
+                target_modules="all-linear",
+                bias="none",
+                task_type="CAUSAL_LM"
+            )
+            base_model = get_peft_model(base_model, lora_config)
+        else:
+            base_model = AutoModelForCausalLM.from_pretrained(base_model_name, config=self.base_model_config)
+            base_model.train()
+            if use_bntd:
+                base_model.model.sliding_window = sliding_window
+                if 'qwen3' in base_model_name.lower():
+                    base_model.model.forward = MethodType(qwen3_forward, base_model.model)
+                    print('use full attn qwen3')
+                elif 'gemma-3' in base_model_name.lower():
+                    base_model.model.forward = MethodType(gemma3_forward, base_model.model)
+                    print('use full attn gemma3')
+                else:
+                    raise ValueError('full attn model not found.')
+
         self.model = base_model
 
         # ---- Detect Head 추가 ----
@@ -335,6 +372,9 @@ class LitBIND(L.LightningModule):
         lr=5e-5,
         epochs=10,
         use_bntd=True,
+        use_qlora=False,
+        lora_r=16,
+        lora_alpha=32,
         inference_sentence_min_length=32,
         inference_sentence_max_length=64,
         inference_sentence_n_overlap=3,
@@ -359,6 +399,9 @@ class LitBIND(L.LightningModule):
             use_sliding_window=use_sliding_window,
             sliding_window=sliding_window,
             use_bntd=use_bntd,
+            use_qlora=use_qlora,
+            lora_r=lora_r,
+            lora_alpha=lora_alpha,
             neftune_alpha=neftune_alpha,
             n_tokens_per_char=n_tokens_per_char
         )
