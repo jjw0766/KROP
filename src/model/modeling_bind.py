@@ -77,6 +77,9 @@ class BIND(nn.Module):
                     print('use full attn gemma3')
                 else:
                     raise ValueError('full attn model not found.')
+            if neftune_alpha:
+                base_model = apply_neftune(base_model, neftune_alpha)   
+                print('neftune applied') 
 
         self.model = base_model
 
