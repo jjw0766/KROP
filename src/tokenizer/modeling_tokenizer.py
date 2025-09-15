@@ -673,6 +673,8 @@ class SentenceTokenizer:
         # Step 3: Append the left over buffer
         if buffer:
             splitted_chunks.append(''.join(buffer))
+
+        splitted_chunks = [splitted_chunk for splitted_chunk in splitted_chunks if splitted_chunk]
     
         return splitted_chunks
 
