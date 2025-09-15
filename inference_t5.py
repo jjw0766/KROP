@@ -7,7 +7,7 @@ import lightning as L
 import pandas as pd
 from tqdm.auto import tqdm
 
-from src.model.modeling_bind import LitBIND
+from src.model.modeling_t5 import LitT5
 from src.data.dataset import get_test_dataloader
 
 
@@ -32,28 +32,17 @@ def main(args):
     )
 
     # Load checkpoint
-    lit_bind = LitBIND.load_from_checkpoint(
+    lit_t5_model = LitT5.load_from_checkpoint(
         args.checkpoint,
         base_model_name=config["base_model_name"],
-        lr=float(config["learning_rate"]),
+        lr=config["learning_rate"],
         epochs=config["epochs"],
-        use_bntd=config["use_bntd"],
-        use_qlora=config['use_qlora'],
-        lora_r=config['lora_r'],
-        lora_alpha=config['lora_alpha'],
-        sliding_window=config['sliding_window'],
-        inference_sentence_max_length=config["inference_sentence_max_length"],
-        inference_sentence_min_length=config["inference_sentence_min_length"],
-        inference_sentence_n_overlap=config["inference_sentence_n_overlap"],
-        n_tokens_per_char=config.get("n_tokens_per_char",4),
-        input_chars=config.get("input_chars", ""),
-        target_chars=config.get("target_chars", ""),
         strict=False
     )
 
     # Trainer for inference
     trainer = L.Trainer()
-    preds = trainer.predict(lit_bind, test_dl)
+    preds = trainer.predict(lit_t5_model, test_dl)
 
     # Collect predictions
     prediction = []
@@ -78,12 +67,11 @@ def main(args):
         "category": categories,
     })
 
-
     # Save results
     base_name = os.path.basename(args.checkpoint)
     save_name = os.path.splitext(base_name)[0] + ".csv"
     os.makedirs('results', exist_ok=True)
-    result_df.to_csv(f"results/bind_{save_name}", index=False)
+    result_df.to_csv(f"results/t5_{save_name}", index=False)
 
 
 def setup_parser():
@@ -94,7 +82,6 @@ def setup_parser():
                         help="Path to trained checkpoint (.ckpt)")
     parser.add_argument("--cuda_visible_devices", type=str, default="0",
                         help="CUDA device(s) to make visible")
-
     return parser
 
 
