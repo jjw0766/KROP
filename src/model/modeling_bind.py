@@ -1,3 +1,4 @@
+import time
 import torch
 import torch.nn as nn
 import lightning as L
@@ -370,7 +371,7 @@ class LitBIND(L.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        sentences_denoised = self.predict_step(batch, batch_idx)
+        sentences_denoised, times = self.predict_step(batch, batch_idx)
         score = chrf_corpus(sentences_denoised, batch['sentence'])['f1']
         self.log('valid_score', score, batch_size=len(batch['sentence_noisy']))
         return score
@@ -379,7 +380,9 @@ class LitBIND(L.LightningModule):
         if self.inference_sentence_n_overlap > 1:
             sentences_noisy = batch['sentence_noisy']
             sentences_denoised = []
+            times = []
             for sentence_noisy in sentences_noisy:
+                start = time.time()
                 sentence_denoised_chunks = []
                 sentence_noisy_chunks = self.sentence_tokenizer.split_text(sentence_noisy)
                 for sentence_noisy_chunk in sentence_noisy_chunks:
@@ -391,10 +394,13 @@ class LitBIND(L.LightningModule):
                     sentence_denoised_chunks.append(sentence_denoised_chunk[0])
                 sentence_denoised = ''.join(sentence_denoised_chunks)
                 sentences_denoised.append(sentence_denoised)
+                end = time.time()
+                times.append(end-start)
         else:
             sentences_noisy = batch['sentence_noisy']
             sentences_denoised = []
             for sentence_noisy in sentences_noisy:
+                start = time.time()
                 sentence_denoised_chunks_overlapped = []
                 sentence_noisy_chunks = self.sentence_tokenizer.split_text(sentence_noisy)
                 sentence_noisy_chunks_overlapped = self.sentence_tokenizer.overlap(sentence_noisy_chunks)
@@ -407,7 +413,9 @@ class LitBIND(L.LightningModule):
                     sentence_denoised_chunks_overlapped.append((start_idx, end_idx, sentence_denoised_chunk[0]))
                 sentence_denoised = self.sentence_tokenizer.decode_overlap(sentence_denoised_chunks_overlapped)
                 sentences_denoised.append(sentence_denoised)
-        return sentences_denoised
+                end = time.time()
+                times.append(end-start)
+        return sentences_denoised, times
     
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
