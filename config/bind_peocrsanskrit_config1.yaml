@@ -4,7 +4,7 @@ cuda_visible_devices: "3"
 # Dataset & Model
 dataset_name: jwengr/PeOcrSanskritPreproc
 base_model_name: Qwen/Qwen3-0.6B-Base
-n_tokens_per_char: 4
+n_tokens_per_char: 8
 input_chars: ""
 target_chars: ""
 

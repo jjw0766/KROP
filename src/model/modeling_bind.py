@@ -15,6 +15,7 @@ from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
 from src.tokenizer.modeling_tokenizer import BINDTokenizer, SentenceTokenizer
 from src.model.utils import apply_neftune
+from src.metrics.ChfF import chrf_corpus
 
 
 class BIND(nn.Module):
@@ -89,68 +90,9 @@ class BIND(nn.Module):
         self.detect_head = nn.Linear(hidden_size, 2)  # binary detection
         
 
-
     def set_tokenizer(self, bind_tokenizer: BINDTokenizer):
         self.tokenizer = bind_tokenizer
 
-    # def forward(self, sentence_noisy, sentence=None, pred=False):
-    #     output_ids = None
-    #     input_ids, attention_mask, token_type_ids = self.tokenizer.batch_encode_char(sentence_noisy, self.tokenizer.input_chars_dict)
-
-    #     if sentence is not None:
-    #         output_ids, output_attention_mask, output_token_type_ids = self.tokenizer.batch_encode_char(sentence, self.tokenizer.target_chars_dict)
-            
-    #         correct_ids = output_ids.clone().to('cuda')
-    #         correct_ids[output_token_type_ids == 0] = -100
-
-    #         # 0이면 동일, 1이면 다름
-    #         detect_ids = ((input_ids != output_ids) * 1).type_as(output_ids).to('cuda')
-    #         detect_ids[output_token_type_ids == 0] = -100  # loss ignore index를 위해 masking
-
-    #     input_ids = input_ids.to('cuda')
-    #     attention_mask = attention_mask.to('cuda')
-
-    #     outputs = self.model(
-    #         input_ids=input_ids,
-    #         attention_mask=attention_mask,
-    #         output_hidden_states=True,
-    #     )
-
-    #     logits = outputs.logits
-    #     hidden_states = outputs.hidden_states[-1]  # 마지막 layer hidden state [B, L, H]
-
-    #     loss = None
-    #     if sentence is not None:
-    #         correct_loss = nn.CrossEntropyLoss(reduction='mean')(
-    #             logits[:, :-1, :].reshape(-1, self.model.config.vocab_size),
-    #             correct_ids[:, 1:].reshape(-1),
-    #         )
-
-    #         detect_logits = self.detect_head(hidden_states)             # [B, L, 2]
-    #         detect_loss = FocalLoss('multiclass', ignore_index=-100)(
-    #             detect_logits[:, :-1, :].reshape(-1, 2),
-    #             detect_ids[:, 1:].reshape(-1)
-    #         )
-        
-    #         loss = correct_loss + detect_loss
-            
-
-
-
-    #     # -------- Prediction --------
-    #     pred_ids, sentence_denoised = [], []
-    #     if pred:
-    #         for idx in range(input_ids.shape[0]):
-    #             input_ids_row = input_ids[idx].detach().cpu().tolist()[1:-1]
-    #             pred_ids_row = logits[idx][:-2].argmax(-1).detach().cpu().tolist()
-    #             token_type_ids_row = token_type_ids[idx].detach().cpu().tolist()[1:-1]
-
-    #             pred_ids.append(pred_ids_row)
-    #             sentence_denoised.append(
-    #                 self.tokenizer.decode_char(pred_ids_row, token_type_ids_row, input_ids_row, False)
-    #             )
-
-    #     return loss, logits, pred_ids, sentence_denoised
 
     def forward(self, sentence_noisy, sentence=None, pred=False):
         output_ids = None
@@ -193,9 +135,6 @@ class BIND(nn.Module):
             )
         
             loss = correct_loss + detect_loss
-            
-
-
 
         # -------- Prediction --------
         pred_ids, sentence_denoised = [], []
@@ -431,9 +370,10 @@ class LitBIND(L.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss, logits, *_ = self(batch, pred=False)
-        self.log('valid_loss', loss, batch_size=len(batch['sentence_noisy']))
-        return loss
+        sentences_denoised = self.predict_step(batch, batch_idx)
+        score = chrf_corpus(sentences_denoised, batch['sentence'])['f1']
+        self.log('valid_score', score, batch_size=len(batch['sentence_noisy']))
+        return score
     
     def predict_step(self, batch, batch_idx):
         if self.inference_sentence_n_overlap > 1:

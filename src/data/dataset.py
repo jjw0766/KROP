@@ -104,7 +104,7 @@ def get_train_dataloader(dataset_name, batch_size, max_length, category=None):
 def get_dev_dataloader(dataset_name, batch_size, max_length):
     ds = datasets.load_dataset(dataset_name)
     dev_ds = ds['dev']
-    return DataLoader(dev_ds, batch_size=batch_size, collate_fn=TrainValCollateFn(max_length=max_length, mode='valid'))
+    return DataLoader(dev_ds, batch_size=batch_size)
 
 def get_test_dataloader(dataset_name, batch_size):
     ds = datasets.load_dataset(dataset_name)
