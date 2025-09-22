@@ -1,3 +1,4 @@
+import time
 import lightning as L
 import torch
 
@@ -5,6 +6,7 @@ from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from transformers import AutoModelForCausalLM, BitsAndBytesConfig, AutoTokenizer
 
 from src.model.utils import apply_neftune
+from src.metrics.ChfF import chrf_corpus
 
 class LitInstructionModel(L.LightningModule):
     def __init__(
@@ -111,11 +113,14 @@ class LitInstructionModel(L.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss, logits = self(batch)
-        self.log('valid_loss', loss, batch_size=len(batch['sentence_noisy']))
-        return loss
+        sentences_denoised, times = self.predict_step(batch, batch_idx)
+        score = chrf_corpus(sentences_denoised, batch['sentence'])['f1']
+        self.log('valid_score', score, batch_size=len(batch['sentence_noisy']))
+        return score
     
     def predict_step(self, batch, batch_idx):
+        times = []
+        start = time.time()
         inputs = self.batch_tokenize(batch, mode='inference')
         outputs = self.model.generate(
             input_ids = inputs['input_ids'].to('cuda'),
@@ -123,7 +128,9 @@ class LitInstructionModel(L.LightningModule):
         )
         generated_ids = outputs[:, inputs['input_ids'].shape[1]:]
         decoded = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
-        return decoded
+        end = time.time()
+        times.append(end-start)
+        return decoded, times
         
     
     def configure_optimizers(self):

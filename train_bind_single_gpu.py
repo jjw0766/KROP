@@ -23,16 +23,14 @@ def main(args):
     train_dl = get_train_dataloader(
         args.dataset_name,
         batch_size=args.mini_batch_size,
-        max_length=args.train_max_length
+        max_length=args.train_max_length,
+        category=args.category
     )
     dev_dl = get_dev_dataloader(
         args.dataset_name,
         batch_size=args.mini_batch_size,
-        max_length=args.valid_max_length
-    )
-    test_dl = get_test_dataloader(
-        args.dataset_name,
-        batch_size=args.mini_batch_size
+        max_length=args.valid_max_length,
+        category=args.category
     )
     if args.pretrained_model_path:
         print('pretrained model loaded')
@@ -75,7 +73,7 @@ def main(args):
 
     checkpoint_callback = ModelCheckpoint(
         dirpath='checkpoints/bind',
-        filename=f"{args.dataset_name.split('/')[-1]}-{args.base_model_name.split('/')[-1]}-seed={args.seed}-{args.prefix}" + "-{epoch:02d}-{valid_score:.4f}",
+        filename=f"{args.dataset_name.split('/')[-1]}-{args.category}-{args.base_model_name.split('/')[-1]}-seed={args.seed}-{args.prefix}" + "-{epoch:02d}-{valid_score:.4f}",
         monitor='valid_score',
         mode='max',
         save_weights_only=True,
@@ -105,6 +103,7 @@ def setup_parser():
 
     # Data and model arguments
     parser.add_argument('--dataset_name', type=str, default='jwengr/C-LLM', help='Hugging Face dataset name.')
+    parser.add_argument('--category', type=str, default='', help='category')
     parser.add_argument('--base_model_name', type=str, default='Qwen/Qwen3-0.6B-Base', help='Hugging Face base model name.')
     parser.add_argument('--pretrained_model_path', type=str, default='', help='Pretrained model path')
     parser.add_argument('--n_tokens_per_char', type=int, default=4, help='n_tokens_per_char')

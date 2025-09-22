@@ -1,11 +1,10 @@
-seed: 42
-cuda_visible_devices: "1"
+seed: 46
+cuda_visible_devices: "0"
 
 # Dataset & Model
 dataset_name: jwengr/ToxiBenchCN
-base_model_name: Qwen/Qwen3-8B
-use_qlora: True
-
+base_model_name: Qwen/Qwen3-4B
+use_qlora: false
 
 # Training Hyperparameters
 mini_batch_size: 2

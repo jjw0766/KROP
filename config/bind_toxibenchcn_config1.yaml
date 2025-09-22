@@ -1,5 +1,5 @@
 seed: 46
-cuda_visible_devices: "2"
+cuda_visible_devices: "3"
 
 # Dataset & Model
 dataset_name: jwengr/ToxiBenchCN

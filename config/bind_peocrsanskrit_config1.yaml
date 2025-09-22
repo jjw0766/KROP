@@ -1,16 +1,17 @@
-seed: 42
+seed: 44
 cuda_visible_devices: "3"
 
 # Dataset & Model
 dataset_name: jwengr/PeOcrSanskritPreproc
+pretrained_model_path: ""
 base_model_name: Qwen/Qwen3-0.6B-Base
-n_tokens_per_char: 8
+n_tokens_per_char: 4
 input_chars: ""
 target_chars: ""
 
 # Training Hyperparameters
-mini_batch_size: 4
-n_batch: 8
+mini_batch_size: 16
+n_batch: 2
 epochs: 10
 learning_rate: 0.0001
 use_bntd: true
@@ -26,4 +27,4 @@ inference_sentence_max_length: 64
 inference_sentence_min_length: 32
 inference_sentence_n_overlap: 3
 
-prefix: "n_tokens_per_char=4"
+prefix: ""

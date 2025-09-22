@@ -35,13 +35,16 @@ def main(args):
         base_model_name=args.base_model_name,
         lr=args.learning_rate,
         epochs=args.epochs,
+        use_qlora=args.use_qlora,
+        lora_alpha=args.lora_alpha,
+        lora_r=args.lora_r
     )
 
     checkpoint_callback = ModelCheckpoint(
         dirpath='checkpoints/t5',
-        filename=f"{args.dataset_name.split('/')[-1]}-{args.base_model_name.split('/')[-1]}-{args.prefix}" + "-{epoch:02d}-{valid_loss:.4f}",
-        monitor='valid_loss',
-        mode='min',
+        filename=f"{args.dataset_name.split('/')[-1]}-{args.base_model_name.split('/')[-1]}-seed={args.seed}-{args.prefix}" + "-{epoch:02d}-{valid_score:.4f}",
+        monitor='valid_score',
+        mode='max',
         save_weights_only=True,
         save_top_k=1,
     )
@@ -50,7 +53,8 @@ def main(args):
         callbacks=[checkpoint_callback],
         precision='bf16',
         max_epochs=args.epochs,
-        accumulate_grad_batches=args.n_batch
+        accumulate_grad_batches=args.n_batch,
+        val_check_interval=0.5
     )
 
     trainer.fit(lit_t5_model, train_dl, dev_dl)
@@ -75,6 +79,11 @@ def setup_parser():
     parser.add_argument('--n_batch', type=int, default=2, help='Number of gradient accumulation batches.')
     parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs.')
     parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning rate for the optimizer.')
+    parser.add_argument('--use_qlora', type=bool, default=False, help='use qlora')
+    parser.add_argument('--lora_r', type=int, default=16, help='lora r')
+    parser.add_argument('--lora_alpha', type=int, default=10, help='lora alpha')
+    
+
 
     # Text processing arguments
     parser.add_argument('--train_max_length', type=int, default=128, help='Max sequence length for training.')

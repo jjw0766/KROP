@@ -101,15 +101,19 @@ def get_train_dataloader(dataset_name, batch_size, max_length, category=None):
         train_ds = train_ds.filter(lambda example: example['category']==category)
     return DataLoader(train_ds, batch_size=batch_size, collate_fn=TrainValCollateFn(max_length=max_length, mode='train'), shuffle=True)
 
-def get_dev_dataloader(dataset_name, batch_size, max_length):
+def get_dev_dataloader(dataset_name, batch_size, max_length, category=None):
     ds = datasets.load_dataset(dataset_name)
     dev_ds = ds['dev']
+    if category:
+        dev_ds = dev_ds.filter(lambda example: example['category']==category)
     return DataLoader(dev_ds, batch_size=batch_size)
 
-def get_test_dataloader(dataset_name, batch_size):
+def get_test_dataloader(dataset_name, batch_size, category=None):
     ds = datasets.load_dataset(dataset_name)
-    dev_ds = ds['test']
-    return DataLoader(dev_ds, batch_size=batch_size)
+    test_ds = ds['test']
+    if category:
+        test_ds = test_ds.filter(lambda example: example['category']==category)
+    return DataLoader(test_ds, batch_size=batch_size)
 
 def get_mngp_train_dataloader(dataset_name, batch_size, max_length, category=None):
     ds = datasets.load_dataset(dataset_name)

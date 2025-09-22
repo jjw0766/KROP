@@ -1,3 +1,4 @@
+import time
 import torch
 import torch.nn as nn
 import lightning as L
@@ -10,6 +11,7 @@ from transformers import AutoModelWithLMHead
 from segmentation_models_pytorch.losses import FocalLoss
 
 from src.tokenizer.modeling_tokenizer import CharEncoderTokenizer, SentenceTokenizer
+from src.metrics.ChfF import chrf_corpus
 
 
 class CharEncoder(nn.Module):
@@ -121,15 +123,19 @@ class LitCharEncoder(L.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss, logits, *_ = self(batch, pred=False)
-        self.log('valid_loss', loss, batch_size=len(batch['sentence_noisy']))
+        sentences_denoised, times = self.predict_step(batch, batch_idx)
+        score = chrf_corpus(sentences_denoised, batch['sentence'])['f1']
+        self.log('valid_score', score, batch_size=len(batch['sentence_noisy']))
+        return score
         return loss
     
     def predict_step(self, batch, batch_idx):
         if self.inference_sentence_n_overlap > 1:
             sentences_noisy = batch['sentence_noisy']
             sentences_denoised = []
+            times = []
             for sentence_noisy in sentences_noisy:
+                start = time.time()
                 sentence_denoised_chunks = []
                 sentence_noisy_chunks = self.sentence_tokenizer.split_text(sentence_noisy)
                 for sentence_noisy_chunk in sentence_noisy_chunks:
@@ -141,10 +147,13 @@ class LitCharEncoder(L.LightningModule):
                     sentence_denoised_chunks.append(sentence_denoised_chunk[0])
                 sentence_denoised = ''.join(sentence_denoised_chunks)
                 sentences_denoised.append(sentence_denoised)
+                end = time.time()
+                times.append(end-start)
         else:
             sentences_noisy = batch['sentence_noisy']
             sentences_denoised = []
             for sentence_noisy in sentences_noisy:
+                start = time.time()
                 sentence_denoised_chunks_overlapped = []
                 sentence_noisy_chunks = self.sentence_tokenizer.split_text(sentence_noisy)
                 sentence_noisy_chunks_overlapped = self.sentence_tokenizer.overlap(sentence_noisy_chunks)
@@ -157,6 +166,8 @@ class LitCharEncoder(L.LightningModule):
                     sentence_denoised_chunks_overlapped.append((start_idx, end_idx, sentence_denoised_chunk[0]))
                 sentence_denoised = self.sentence_tokenizer.decode_overlap(sentence_denoised_chunks_overlapped)
                 sentences_denoised.append(sentence_denoised)
+                end = time.time()
+                times.append(end-start)
         return sentences_denoised
     
     def configure_optimizers(self):

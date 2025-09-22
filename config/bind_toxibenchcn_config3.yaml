@@ -1,22 +1,26 @@
-seed: 42
-cuda_visible_devices: "2"
+seed: 43
+cuda_visible_devices: "3"
 
 # Dataset & Model
 dataset_name: jwengr/ToxiBenchCN
-pretrained_model_path: checkpoints/bind/ToxiBenchCN-mngp-Qwen3-4B-Base-detectcnn-epoch=08-valid_loss=0.6995.ckpt
-base_model_name: Qwen/Qwen3-4B-Base
+category: "pinyin"
+pretrained_model_path: ""
+base_model_name: Qwen/Qwen3-14B-Base
 n_tokens_per_char: 4
 input_chars: ""
 target_chars: ""
 
 # Training Hyperparameters
-mini_batch_size: 2
-n_batch: 16
+mini_batch_size: 8
+n_batch: 4
 epochs: 10
 learning_rate: 0.0001
 use_bntd: true
 sliding_window: 12
 neftune_alpha: 0
+use_qlora: true
+lora_r: 16
+lora_alpha: 32
 
 # Sequence Lengths
 train_max_length: 128
@@ -25,4 +29,4 @@ inference_sentence_max_length: 64
 inference_sentence_min_length: 32
 inference_sentence_n_overlap: 3
 
-prefix: "detectcnn-mngp-pretrained"
+prefix: ""

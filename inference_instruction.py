@@ -28,7 +28,8 @@ def main(args):
     # Test dataloader
     test_dl = get_test_dataloader(
         config["dataset_name"],
-        batch_size=config["mini_batch_size"]
+        # batch_size=config["mini_batch_size"],
+        batch_size=1
     )
 
     # Load checkpoint
@@ -49,8 +50,10 @@ def main(args):
 
     # Collect predictions
     prediction = []
-    for pred in tqdm(preds):
+    times = []
+    for pred, time in tqdm(preds):
         prediction.extend(pred)
+        times.extend(time)
 
     # Build dataframe
     categories, inputs, true = [], [], []
@@ -68,6 +71,7 @@ def main(args):
         "pred": prediction,
         "true": true,
         "category": categories,
+        "times":times
     })
 
     # Save results
