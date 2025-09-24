@@ -53,8 +53,10 @@ def main(args):
 
     # Collect predictions
     prediction = []
-    for pred in tqdm(preds):
+    times = []
+    for pred, time in tqdm(preds):
         prediction.extend(pred)
+        times.extend(time)
 
     # Build dataframe
     categories, inputs, true = [], [], []
@@ -72,6 +74,7 @@ def main(args):
         "pred": prediction,
         "true": true,
         "category": categories,
+        "time": times
     })
 
     # Save results

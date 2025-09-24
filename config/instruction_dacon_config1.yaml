@@ -1,18 +1,19 @@
-seed: 44
-cuda_visible_devices: "3"
+seed: 42
+cuda_visible_devices: "1"
 
 # Dataset & Model
-dataset_name: jwengr/PeOcrSanskritPreproc
-base_model_name: google/byt5-base
+dataset_name: jwengr/DACON-Korean-Review-Obfuscation
+base_model_name: Qwen/Qwen3-0.6B
 use_qlora: false
 
 # Training Hyperparameters
-mini_batch_size: 16
-n_batch: 2
+mini_batch_size: 2
+n_batch: 16
 epochs: 10
 learning_rate: 0.0001
 lora_r: 16
 lora_alpha: 32
+neftune_alpha: 0
 
 # Sequence Lengths
 train_max_length: 128

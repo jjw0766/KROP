@@ -1,9 +1,9 @@
-seed: 46
-cuda_visible_devices: "1"
+seed: 42
+cuda_visible_devices: "2"
 
 # Dataset & Model
-dataset_name: jwengr/ToxiBenchCN
-base_model_name: google-bert/bert-base-chinese
+dataset_name: jwengr/DACON-Korean-Review-Obfuscation
+base_model_name: klue/roberta-large
 n_tokens_per_char: 1
 input_chars: ""
 target_chars: ""

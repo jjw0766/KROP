@@ -538,14 +538,18 @@ class CharEncoderTokenizer:
         for char in graphemes(sentence):
             if char==' ':
                 char = self.space_token
-            if chars_dict:
-                if len(char)==1 and chars_dict.get(ord(char)):
-                    token_type_ids.extend([1] * self.n_tokens_per_char)
-                else:
-                    token_type_ids.extend([0] * self.n_tokens_per_char)
+                encoded_id = [self.space_token_id]
+                token_type_ids.extend([0] * self.n_tokens_per_char)
             else:
-                token_type_ids.extend([1] * self.n_tokens_per_char)
-            encoded_id = self.base_tokenizer.encode(char, add_special_tokens=False)[:self.n_tokens_per_char]
+                if chars_dict:
+                    if len(char)==1 and chars_dict.get(ord(char)):
+                        token_type_ids.extend([1] * self.n_tokens_per_char)
+                    else:
+                        token_type_ids.extend([0] * self.n_tokens_per_char)
+                else:
+                    token_type_ids.extend([1] * self.n_tokens_per_char)
+                encoded_id = self.base_tokenizer.encode(char, add_special_tokens=False)[:self.n_tokens_per_char]
+
             encoded_id = encoded_id + [self.unk_token_id] * (self.n_tokens_per_char - len(encoded_id))
             encoded_ids.extend(encoded_id)
         return encoded_ids, token_type_ids

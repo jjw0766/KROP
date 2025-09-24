@@ -127,7 +127,6 @@ class LitCharEncoder(L.LightningModule):
         score = chrf_corpus(sentences_denoised, batch['sentence'])['f1']
         self.log('valid_score', score, batch_size=len(batch['sentence_noisy']))
         return score
-        return loss
     
     def predict_step(self, batch, batch_idx):
         if self.inference_sentence_n_overlap > 1:
@@ -168,7 +167,7 @@ class LitCharEncoder(L.LightningModule):
                 sentences_denoised.append(sentence_denoised)
                 end = time.time()
                 times.append(end-start)
-        return sentences_denoised
+        return sentences_denoised, times
     
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(

@@ -52,9 +52,9 @@ def main(args):
 
     checkpoint_callback = ModelCheckpoint(
         dirpath='checkpoints/charencoder',
-        filename=f"{args.dataset_name.split('/')[-1]}-{args.base_model_name.split('/')[-1]}" + "-{epoch:02d}-{valid_loss:.4f}",
-        monitor='valid_loss',
-        mode='min',
+        filename=f"{args.dataset_name.split('/')[-1]}-{args.base_model_name.split('/')[-1]}-seed={args.seed}" + "-{epoch:02d}-{valid_score:.4f}",
+        monitor='valid_score',
+        mode='max',
         save_weights_only=True,
         save_top_k=1,
     )
@@ -63,7 +63,8 @@ def main(args):
         callbacks=[checkpoint_callback],
         # precision='bf16',
         max_epochs=args.epochs,
-        accumulate_grad_batches=args.n_batch
+        accumulate_grad_batches=args.n_batch,
+        val_check_interval=0.5
     )
 
     trainer.fit(lit_char_encoder, train_dl, dev_dl)
