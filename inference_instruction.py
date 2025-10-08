@@ -1,4 +1,5 @@
 import os
+import ast
 import argparse
 import yaml
 from dotenv import load_dotenv
@@ -29,23 +30,34 @@ def main(args):
     test_dl = get_test_dataloader(
         config["dataset_name"],
         # batch_size=config["mini_batch_size"],
-        batch_size=1
+        batch_size=1,
+        select=config.get('test_dataset_select', -1),
+        categories=ast.literal_eval(config.get('test_categories', '[]')),
     )
 
-    # Load checkpoint
-    lit_inst_model = LitInstructionModel.load_from_checkpoint(
-        args.checkpoint,
-        base_model_name=config["base_model_name"],
-        use_qlora=config["use_qlora"],
-        lr=config["learning_rate"],
-        epochs=config["epochs"],
-        lora_r=config["lora_r"],
-        lora_alpha=config["lora_alpha"],
-        strict=False
-    )
+    if not args.checkpoint:
+        lit_inst_model = LitInstructionModel(
+            base_model_name=config["base_model_name"],
+            use_qlora=config["use_qlora"],
+            lr=float(config["learning_rate"]),
+            epochs=config["epochs"],
+            lora_r=config["lora_r"],
+            lora_alpha=config["lora_alpha"]
+        )
+    else:
+        lit_inst_model = LitInstructionModel.load_from_checkpoint(
+            args.checkpoint,
+            base_model_name=config["base_model_name"],
+            use_qlora=config["use_qlora"],
+            lr=config["learning_rate"],
+            epochs=config["epochs"],
+            lora_r=config["lora_r"],
+            lora_alpha=config["lora_alpha"],
+            strict=False
+        )
 
     # Trainer for inference
-    trainer = L.Trainer()
+    trainer = L.Trainer(precision='bf16')
     preds = trainer.predict(lit_inst_model, test_dl)
 
     # Collect predictions
@@ -76,7 +88,9 @@ def main(args):
 
     # Save results
     base_name = os.path.basename(args.checkpoint)
-    save_name = os.path.splitext(base_name)[0] + ".csv"
+    if not base_name:
+        base_name = config["base_model_name"].split("/")[-1]
+    save_name = os.path.splitext(base_name)[0] + '-' + 'categories=' + config.get('test_categories', 'total') + ".csv"
     os.makedirs('results', exist_ok=True)
     result_df.to_csv(f"results/inst_{save_name}", index=False)
 
@@ -85,7 +99,7 @@ def setup_parser():
     parser = argparse.ArgumentParser(description="Inference for LitBIND model")
     parser.add_argument("--config", type=str, default="train_config.yaml",
                         help="Path to YAML config file (same as training)")
-    parser.add_argument("--checkpoint", type=str, required=True,
+    parser.add_argument("--checkpoint", type=str, default="", required=False,
                         help="Path to trained checkpoint (.ckpt)")
     parser.add_argument("--cuda_visible_devices", type=str, default="0",
                         help="CUDA device(s) to make visible")

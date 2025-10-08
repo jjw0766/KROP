@@ -1,14 +1,17 @@
-seed: 46
+seed: 42
 cuda_visible_devices: "0"
 
 # Dataset & Model
-dataset_name: jwengr/ToxiBenchCN
+dataset_name: jwengr/BitViper-1-20-79
 base_model_name: google/byt5-large
 use_qlora: false
 
 # Training Hyperparameters
 mini_batch_size: 2
 n_batch: 16
+train_dataset_select: -1
+val_dataset_select: 1000
+test_dataset_select: 1000
 epochs: 10
 learning_rate: 0.0001
 

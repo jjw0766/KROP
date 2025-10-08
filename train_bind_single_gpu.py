@@ -1,4 +1,5 @@
 import os
+import ast
 import yaml
 import argparse
 from dotenv import load_dotenv
@@ -24,13 +25,15 @@ def main(args):
         args.dataset_name,
         batch_size=args.mini_batch_size,
         max_length=args.train_max_length,
-        category=args.category
+        categories=ast.literal_eval(args.train_categories),
+        select=args.train_dataset_select
     )
     dev_dl = get_dev_dataloader(
         args.dataset_name,
         batch_size=args.mini_batch_size,
         max_length=args.valid_max_length,
-        category=args.category
+        categories=ast.literal_eval(args.val_categories),
+        select=args.val_dataset_select
     )
     if args.pretrained_model_path:
         print('pretrained model loaded')
@@ -73,7 +76,7 @@ def main(args):
 
     checkpoint_callback = ModelCheckpoint(
         dirpath='checkpoints/bind',
-        filename=f"{args.dataset_name.split('/')[-1]}-{args.category}-{args.base_model_name.split('/')[-1]}-seed={args.seed}-{args.prefix}" + "-{epoch:02d}-{valid_score:.4f}",
+        filename=f"{args.dataset_name.split('/')[-1]}-{args.base_model_name.split('/')[-1]}-seed={args.seed}-{args.prefix}" + "-{epoch:02d}-{valid_score:.4f}",
         monitor='valid_score',
         mode='max',
         save_weights_only=True,
@@ -103,7 +106,9 @@ def setup_parser():
 
     # Data and model arguments
     parser.add_argument('--dataset_name', type=str, default='jwengr/C-LLM', help='Hugging Face dataset name.')
-    parser.add_argument('--category', type=str, default='', help='category')
+    parser.add_argument('--train_categories', type=str, default='[]', help='categories')
+    parser.add_argument('--val_categories', type=str, default='[]', help='categories')
+    parser.add_argument('--test_categories', type=str, default='[]', help='categories')
     parser.add_argument('--base_model_name', type=str, default='Qwen/Qwen3-0.6B-Base', help='Hugging Face base model name.')
     parser.add_argument('--pretrained_model_path', type=str, default='', help='Pretrained model path')
     parser.add_argument('--n_tokens_per_char', type=int, default=4, help='n_tokens_per_char')
@@ -113,6 +118,9 @@ def setup_parser():
     # Training hyperparameters
     parser.add_argument('--mini_batch_size', type=int, default=16, help='Mini-batch size for training.')
     parser.add_argument('--n_batch', type=int, default=2, help='Number of gradient accumulation batches.')
+    parser.add_argument('--train_dataset_select', type=int, default=-1, help='Number of training samples to select. -1 means all.')
+    parser.add_argument('--val_dataset_select', type=int, default=-1, help='Number of validation samples to select. -1 means all.')
+    parser.add_argument('--test_dataset_select', type=int, default=-1, help='Number of test samples to select. -1 means all.')
     parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs.')
     parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning rate for the optimizer.')
     parser.add_argument('--use_bntd', type=bool, default=True, help='Whether to use BNTD in the model.')

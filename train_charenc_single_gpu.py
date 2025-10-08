@@ -28,11 +28,8 @@ def main(args):
     dev_dl = get_dev_dataloader(
         args.dataset_name,
         batch_size=args.mini_batch_size,
-        max_length=args.valid_max_length
-    )
-    test_dl = get_test_dataloader(
-        args.dataset_name,
-        batch_size=args.mini_batch_size
+        max_length=args.valid_max_length,
+        select=args.val_dataset_select
     )
 
     lit_char_encoder = LitCharEncoder(
@@ -83,6 +80,9 @@ def setup_parser():
     # Data and model arguments
     parser.add_argument('--dataset_name', type=str, default='jwengr/C-LLM', help='Hugging Face dataset name.')
     parser.add_argument('--base_model_name', type=str, default='Qwen/Qwen3-0.6B-Base', help='Hugging Face base model name.')
+    parser.add_argument('--train_dataset_select', type=int, default=-1, help='Number of training samples to select. -1 for all.')
+    parser.add_argument('--val_dataset_select', type=int, default=-1, help='Number of validation samples to select.')
+    parser.add_argument('--test_dataset_select', type=int, default=-1, help='Number of test samples to select.')
     parser.add_argument('--n_tokens_per_char', type=int, default=3, help='n_tokens_per_char')
     parser.add_argument('--input_chars', type=str, default='', help='Target characters for the model.')
     parser.add_argument('--target_chars', type=str, default='', help='Target characters for the model.')
@@ -92,7 +92,6 @@ def setup_parser():
     parser.add_argument('--n_batch', type=int, default=2, help='Number of gradient accumulation batches.')
     parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs.')
     parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning rate for the optimizer.')
-    parser.add_argument('--use_bntd', type=bool, default=True, help='Whether to use BNTD in the model.')
 
     # Text processing arguments
     parser.add_argument('--train_max_length', type=int, default=128, help='Max sequence length for training.')

@@ -94,25 +94,31 @@ class MaskedNextGraphmePredictionTrainValCollateFn:
             'sentence': sentences
         }
 
-def get_train_dataloader(dataset_name, batch_size, max_length, category=None):
+def get_train_dataloader(dataset_name, batch_size, max_length, categories=[], select=-1):
     ds = datasets.load_dataset(dataset_name)
     train_ds = ds['train']
-    if category:
-        train_ds = train_ds.filter(lambda example: example['category']==category)
+    if select>0:
+        train_ds = train_ds.select(range(select))
+    if categories:
+        train_ds = train_ds.filter(lambda example: example['category'] in categories)
     return DataLoader(train_ds, batch_size=batch_size, collate_fn=TrainValCollateFn(max_length=max_length, mode='train'), shuffle=True)
 
-def get_dev_dataloader(dataset_name, batch_size, max_length, category=None):
+def get_dev_dataloader(dataset_name, batch_size, max_length, categories=[], select=-1):
     ds = datasets.load_dataset(dataset_name)
     dev_ds = ds['dev']
-    if category:
-        dev_ds = dev_ds.filter(lambda example: example['category']==category)
+    if select>0:
+        dev_ds = dev_ds.select(range(select))
+    if categories:
+        dev_ds = dev_ds.filter(lambda example: example['category'] in categories)
     return DataLoader(dev_ds, batch_size=batch_size)
 
-def get_test_dataloader(dataset_name, batch_size, category=None):
+def get_test_dataloader(dataset_name, batch_size, categories=[], select=-1):
     ds = datasets.load_dataset(dataset_name)
     test_ds = ds['test']
-    if category:
-        test_ds = test_ds.filter(lambda example: example['category']==category)
+    if select>0:
+        test_ds = test_ds.select(range(select))
+    if categories:
+        test_ds = test_ds.filter(lambda example: example['category'] in categories)
     return DataLoader(test_ds, batch_size=batch_size)
 
 def get_mngp_train_dataloader(dataset_name, batch_size, max_length, category=None):

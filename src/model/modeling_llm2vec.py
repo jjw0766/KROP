@@ -6,6 +6,7 @@ import lightning as L
 from types import MethodType
 from typing import List, Optional, Tuple, Union
 from copy import deepcopy
+from torch.nn.utils.rnn import pad_sequence
 from torch.optim import AdamW
 from transformers import AutoModelForCausalLM, AutoConfig, BitsAndBytesConfig
 from transformers.modeling_attn_mask_utils import _prepare_4d_attention_mask
@@ -14,7 +15,7 @@ from segmentation_models_pytorch.losses import FocalLoss
 from grapheme import graphemes
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
-from src.tokenizer.modeling_tokenizer import BINDTokenizer, SentenceTokenizer
+from src.tokenizer.modeling_tokenizer import SentenceTokenizer
 from src.model.utils import apply_neftune
 from src.metrics.ChfF import chrf_corpus
 
@@ -89,131 +90,79 @@ class BIND(nn.Module):
         hidden_size = self.model.config.hidden_size
         self.detect_window = nn.Conv1d(hidden_size, hidden_size, kernel_size=n_tokens_per_char, stride=n_tokens_per_char)
         self.detect_head = nn.Linear(hidden_size, 2)  # binary detection
+
         
 
-    def set_tokenizer(self, bind_tokenizer: BINDTokenizer):
-        self.tokenizer = bind_tokenizer
+    def set_tokenizer(self, tokenizer):
+        self.tokenizer = tokenizer
+        self.bos_token_id = self.tokenizer.encode('<|im_start|>', add_special_tokens=False)[-1]
+        self.bos_token = '<|im_start|>'
+        self.eos_token_id = self.tokenizer.encode('<|im_end|>', add_special_tokens=False)[-1]
+        self.eos_token = '<|im_end|>'
+        self.pad_token_id = 140783
 
 
     def forward(self, sentence_noisy, sentence=None, pred=False):
         output_ids = None
-        input_ids, attention_mask, token_type_ids = self.tokenizer.batch_encode_char(sentence_noisy, self.tokenizer.input_chars_dict)
+        inputs = self.tokenizer.batch_encode_plus(
+            sentence_noisy,
+            padding=True,
+        )
+        input_ids = inputs['input_ids']
+        input_ids_add_bos_eos = [[self.bos_token_id] + input_id + [self.eos_token_id] for input_id in input_ids]
+        input_ids_add_bos_eos_padded = pad_sequence([torch.tensor(input_id) for input_id in input_ids_add_bos_eos], batch_first=True, padding_value=self.pad_token_id)
+        input_ids = input_ids_add_bos_eos_padded.to('cuda')
+        attention_mask = input_ids.ne(self.pad_token_id).long().to('cuda')
 
         if sentence is not None:
-            output_ids, output_attention_mask, output_token_type_ids = self.tokenizer.batch_encode_char(sentence, self.tokenizer.target_chars_dict)
+            outpus = self.tokenizer.batch_encode_plus(
+                sentence,
+                return_tensors='pt',
+                padding=True,
+            )
+            output_ids = outpus['input_ids']
+            output_ids_add_bos_eos = [[self.bos_token_id] + output_id + [self.eos_token_id] for output_id in output_ids]
+            output_ids_add_bos_eos_padded = pad_sequence([torch.tensor(output_id) for output_id in output_ids_add_bos_eos], batch_first=True, padding_value=self.pad_token_id)
+            output_ids = output_ids_add_bos_eos_padded
+            output_ids = output_ids[:, :input_ids.shape[1]].to('cuda')
             
-            correct_ids = output_ids.clone().to('cuda')
-            correct_ids[output_token_type_ids == 0] = -100
-
-            detect_labels = self.tokenizer.get_batch_detect_label(sentence, sentence_noisy).type_as(output_ids).to('cuda')
-
-        input_ids = input_ids.to('cuda')
-        attention_mask = attention_mask.to('cuda')
 
         outputs = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
-            output_hidden_states=True,
         )
 
         logits = outputs.logits
-        hidden_states = outputs.hidden_states[-1]  # 마지막 layer hidden state [B, L, H]
-        detect_logits = self.detect_window(hidden_states[:,:-2,:].transpose(1,2)).transpose(1,2)
-        detect_logits = self.detect_head(detect_logits)
-        detect_pred = detect_logits.argmax(-1).detach().cpu()
+
 
         loss = None
         if sentence is not None:
             correct_loss = nn.CrossEntropyLoss(reduction='mean')(
                 logits[:, :-1, :].reshape(-1, self.model.config.vocab_size),
-                correct_ids[:, 1:].reshape(-1),
-            )
-
-            
-            detect_loss = FocalLoss('multiclass', ignore_index=-100)(
-                detect_logits.reshape(-1, 2),
-                detect_labels.reshape(-1)
+                output_ids[:, 1:].reshape(-1),
             )
         
-            loss = correct_loss + detect_loss * 1
+            loss = correct_loss
 
         # -------- Prediction --------
         pred_ids, sentence_denoised = [], []
         if pred:
             for idx in range(input_ids.shape[0]):
-                input_ids_row = input_ids[idx].detach().cpu().tolist()[1:-1]
-                pred_ids_row = logits[idx][:-2].argmax(-1).detach().cpu().tolist()
-                token_type_ids_row = token_type_ids[idx].detach().cpu().tolist()[1:-1]
+                pred_ids_temp = logits[idx][:-2].argmax(-1).detach().cpu().tolist()
+                pred_ids_row = []
+                for id in pred_ids_temp:
+                    if id == self.pad_token_id:
+                        break
+                    pred_ids_row.append(id)
 
                 pred_ids.append(pred_ids_row)
-                sentence_denoised_row = self.tokenizer.decode_char(pred_ids_row, token_type_ids_row, input_ids_row, False)
-                sentence_denoised_row_filtered = []
-                for char_noisy, char_pred, detected_yn in zip(graphemes(sentence_noisy[idx]), graphemes(sentence_denoised_row), detect_pred[idx]):
-                    if detected_yn==0:
-                        sentence_denoised_row_filtered.append(char_noisy)
-                    elif detected_yn==1:
-                        sentence_denoised_row_filtered.append(char_pred)
-                sentence_denoised_row_filtered = ''.join(sentence_denoised_row_filtered)
+                sentence_denoised_row = self.tokenizer.decode(pred_ids_row)
 
-                sentence_denoised.append(sentence_denoised_row_filtered)
+                sentence_denoised.append(sentence_denoised_row)
 
         return loss, logits, pred_ids, sentence_denoised
 
-    # def forward(self, sentence_noisy, sentence=None, pred=False):
-    #     output_ids = None
-    #     input_ids, attention_mask, token_type_ids = self.tokenizer.batch_encode_char(sentence_noisy, self.tokenizer.input_chars_dict)
 
-    #     if sentence is not None:
-    #         output_ids, output_attention_mask, output_token_type_ids = self.tokenizer.batch_encode_char(sentence, self.tokenizer.target_chars_dict)
-            
-    #         correct_ids = output_ids.clone().to('cuda')
-    #         # detect_labels = correct_ids.clone()
-    #         correct_ids[output_token_type_ids == 0] = -100
-
-    #         # # detect_labels = self.tokenizer.get_batch_detect_label(sentence, sentence_noisy).type_as(output_ids).to('cuda')
-    #         # detect_labels[input_ids==output_ids] = 0
-    #         # detect_labels[input_ids!=output_ids] = 1
-
-    #     input_ids = input_ids.to('cuda')
-    #     attention_mask = attention_mask.to('cuda')
-
-    #     outputs = self.model(
-    #         input_ids=input_ids,
-    #         attention_mask=attention_mask,
-    #         # output_hidden_states=True,
-    #     )
-
-    #     logits = outputs.logits
-    #     # hidden_states = outputs.hidden_states[-1][:,:-1,:]
-    #     # detect_logits = self.detect_head(hidden_states)
-
-    #     loss = None
-    #     if sentence is not None:
-    #         correct_loss = nn.CrossEntropyLoss(reduction='mean')(
-    #             logits[:, :-1, :].reshape(-1, self.model.config.vocab_size),
-    #             correct_ids[:, 1:].reshape(-1),
-    #         )
-
-    #         # detect_loss = FocalLoss('multiclass', ignore_index=-100)(
-    #         #     detect_logits.reshape(-1, 2),
-    #         #     detect_labels[:, 1:].reshape(-1)
-    #         # )
-        
-    #         loss = correct_loss # + detect_loss
-
-    #     # -------- Prediction --------
-    #     pred_ids, sentence_denoised = [], []
-    #     if pred:
-    #         for idx in range(input_ids.shape[0]):
-    #             input_ids_row = input_ids[idx].detach().cpu().tolist()[1:-1]
-    #             pred_ids_row = logits[idx][:-2].argmax(-1).detach().cpu().tolist()
-    #             token_type_ids_row = token_type_ids[idx].detach().cpu().tolist()[1:-1]
-
-    #             pred_ids.append(pred_ids_row)
-    #             sentence_denoised_row = self.tokenizer.decode_char(pred_ids_row, token_type_ids_row, input_ids_row, False)
-    #             sentence_denoised.append(sentence_denoised_row)
-
-    #     return loss, logits, pred_ids, sentence_denoised
 
 def gemma3_forward(
     self,

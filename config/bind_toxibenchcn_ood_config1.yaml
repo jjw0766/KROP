@@ -5,13 +5,16 @@ cuda_visible_devices: "3"
 dataset_name: jwengr/ToxiBenchCN
 pretrained_model_path: ""
 base_model_name: Qwen/Qwen3-0.6B-Base
+train_categories: "['homo', 'pinyin', 'radical', 'trad']"
+val_categories: "['emo', 'swap']"
+test_categories: "['homo', 'pinyin']"
 n_tokens_per_char: 4
 input_chars: ""
 target_chars: ""
 
 # Training Hyperparameters
-mini_batch_size: 32
-n_batch: 1
+mini_batch_size: 16
+n_batch: 2
 epochs: 10
 learning_rate: 0.0001
 use_bntd: true
@@ -28,4 +31,4 @@ inference_sentence_max_length: 64
 inference_sentence_min_length: 32
 inference_sentence_n_overlap: 3
 
-prefix: "lambda=0.9"
+prefix: "test-seman"

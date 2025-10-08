@@ -23,12 +23,14 @@ def main(args):
     train_dl = get_train_dataloader(
         args.dataset_name,
         batch_size=args.mini_batch_size,
-        max_length=args.train_max_length
+        max_length=args.train_max_length,
+        select=args.train_dataset_select
     )
     dev_dl = get_dev_dataloader(
         args.dataset_name,
         batch_size=args.mini_batch_size,
-        max_length=args.valid_max_length
+        max_length=args.valid_max_length,
+        select=args.val_dataset_select
     )
 
     lit_t5_model = LitT5(
@@ -77,6 +79,9 @@ def setup_parser():
     # Training hyperparameters
     parser.add_argument('--mini_batch_size', type=int, default=16, help='Mini-batch size for training.')
     parser.add_argument('--n_batch', type=int, default=2, help='Number of gradient accumulation batches.')
+    parser.add_argument('--train_dataset_select', type=int, default=-1, help='Number of training dataset samples to use.')
+    parser.add_argument('--val_dataset_select', type=int, default=-1, help='Number of validation dataset samples to use.')
+    parser.add_argument('--test_dataset_select', type=int, default=-1, help='Number of test dataset samples to use.')   
     parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs.')
     parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning rate for the optimizer.')
     parser.add_argument('--use_qlora', type=bool, default=False, help='use qlora')

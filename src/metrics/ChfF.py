@@ -81,3 +81,15 @@ def chrf_corpus(candidates, references, max_char_n=6, max_word_n=2, beta=2):
         "recall": avg_rec * 100,
         "f1": f1 * 100
     }
+
+import evaluate
+
+def chrf_corpus_evaluate(predictions, references):
+    chrf_metric = evaluate.load("chrf")
+    chrf = chrf_metric.compute(predictions=predictions, references=references)['score']
+    return chrf
+
+def chrf_plus_evaluate(predictions, references):
+    chrf_plus_metric = evaluate.load("chrf")
+    chrf_plus = chrf_plus_metric.compute(predictions=predictions, references=references, word_order=2)['score']
+    return chrf_plus

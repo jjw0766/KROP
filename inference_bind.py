@@ -1,4 +1,5 @@
 import os
+import ast
 import argparse
 import yaml
 from dotenv import load_dotenv
@@ -28,7 +29,9 @@ def main(args):
     # Test dataloader
     test_dl = get_test_dataloader(
         config["dataset_name"],
-        batch_size=config["mini_batch_size"]
+        batch_size=config["mini_batch_size"],
+        select=config.get('test_dataset_select', -1),
+        categories=ast.literal_eval(config.get('test_categories', '[]')),
     )
 
     # Load checkpoint
@@ -84,7 +87,7 @@ def main(args):
 
     # Save results
     base_name = os.path.basename(args.checkpoint)
-    save_name = os.path.splitext(base_name)[0] + ".csv"
+    save_name = os.path.splitext(base_name)[0] + '-' + config.get('test_categories', '') + ".csv"
     os.makedirs('results', exist_ok=True)
     result_df.to_csv(f"results/bind_{save_name}", index=False)
 

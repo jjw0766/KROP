@@ -29,6 +29,12 @@ bitsandbytes = "*"
 jsonlines = "*"
 segmentation-models-pytorch = "*"
 grapheme = "*"
+sentencepiece = "*"
+openai = "*"
+python-levenshtein = "*"
+evaluate = "*"
+jiwer = "*"
+sacrebleu = "*"
 
 [dev-packages]
 

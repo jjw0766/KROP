@@ -2,13 +2,16 @@ seed: 44
 cuda_visible_devices: "3"
 
 # Dataset & Model
-dataset_name: jwengr/ToxiBenchCN
-base_model_name: unsloth/gemma-3-12b-it
+dataset_name: jwengr/BitAbuse-1-20-79
+base_model_name: Qwen/Qwen3-0.6B
 use_qlora: true
 
 # Training Hyperparameters
 mini_batch_size: 32
 n_batch: 1
+train_dataset_select: 1000
+val_dataset_select: 1000
+test_dataset_select: 1000
 epochs: 10
 learning_rate: 0.0001
 lora_r: 16
@@ -19,4 +22,4 @@ neftune_alpha: 0
 train_max_length: 128
 valid_max_length: 128
 
-prefix: ''
+prefix: ''  

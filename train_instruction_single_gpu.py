@@ -1,4 +1,5 @@
 import os
+import ast
 import yaml
 import argparse
 from dotenv import load_dotenv
@@ -23,12 +24,16 @@ def main(args):
     train_dl = get_train_dataloader(
         args.dataset_name,
         batch_size=args.mini_batch_size,
-        max_length=args.train_max_length
+        max_length=args.train_max_length,
+        select=args.train_dataset_select,
+        categories=ast.literal_eval(args.train_categories)
     )
     dev_dl = get_dev_dataloader(
         args.dataset_name,
         batch_size=args.mini_batch_size,
-        max_length=args.valid_max_length
+        max_length=args.valid_max_length,
+        select=args.val_dataset_select,
+        categories=ast.literal_eval(args.val_categories)
     )
 
     lit_inst_model = LitInstructionModel(
@@ -73,12 +78,17 @@ def setup_parser():
 
     # Data and model arguments
     parser.add_argument('--dataset_name', type=str, default='jwengr/C-LLM', help='Hugging Face dataset name.')
+    parser.add_argument('--train_categories', type=str, default='[]', help='categories for training data filtering, e.g., \'["category1", "category2"]\'.')
+    parser.add_argument('--val_categories', type=str, default='[]', help='categories for validation data filtering, e.g., \'["category1", "category2"]\'.')
     parser.add_argument('--base_model_name', type=str, default='Qwen/Qwen3-0.6B-Base', help='Hugging Face base model name.')
     parser.add_argument('--use_qlora', type=bool, default=True, help='use qlora.')
 
     # Training hyperparameters
     parser.add_argument('--mini_batch_size', type=int, default=16, help='Mini-batch size for training.')
     parser.add_argument('--n_batch', type=int, default=2, help='Number of gradient accumulation batches.')
+    parser.add_argument('--train_dataset_select', type=int, default=-1, help='Number of training dataset samples to use.')
+    parser.add_argument('--val_dataset_select', type=int, default=-1, help='Number of validation dataset samples to use.')
+    parser.add_argument('--test_dataset_select', type=int, default=-1, help='Number of test dataset samples to use.')
     parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs.')
     parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning rate for the optimizer.')
     parser.add_argument('--lora_r', type=int, default=16, help='Lora Rank')
